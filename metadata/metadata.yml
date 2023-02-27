@@ -1,5 +1,14 @@
 metadata_version: 1
-name: aind-capsule-template
-description: Basic structure of a capsule to be customized as needed.
+name: ephys-spikesort-kilosort25-full
+description: "Electrophysiology analysisi pipeline using Kilosort2.5 via SpikeInterface.\n\nThe
+  pipeline includes:\n- preprocessing: phase_shift, highpass filter, common median
+  reference\n- spike sorting: with KS2.5 \n- postprocessing: remove duplicate units,
+  compute amplitudes, spike/unit locations, PCA, correlograms, template similarity,
+  template metrics, and quality metrics\n- curation based on ISI violation ratio,
+  presence ratio, and amplitude cutoff\n- visualization of timeseries and sorting
+  output in sortingview"
+tags:
+- spike sorting
+- electrophysiology
 authors:
-- name: AIND
+- name: Alessio Buccino

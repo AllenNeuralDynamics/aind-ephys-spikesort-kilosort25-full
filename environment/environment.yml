@@ -1,0 +1,20 @@
+environment_version: 1
+credentials:
+- type: aws
+  id: XwsGj0oLgydTdC
+  description: aws read-only
+  access_key_id: AWS_ACCESS_KEY_ID
+  secret_access_key: AWS_SECRET_ACCESS_KEY
+  region: AWS_DEFAULT_REGION
+- type: general
+  id: n1ydc9pW46UBB7
+  description: AIND Kachery Client ID
+  value: KACHERY_CLOUD_CLIENT_ID
+- type: general
+  id: GtEfIcno58FSxw
+  description: AIND Kachery Key
+  value: KACHERY_CLOUD_PRIVATE_KEY
+- type: general
+  id: QOcjSnzKIcncSV
+  description: AIND Kachery Zone
+  value: KACHERY_ZONE
