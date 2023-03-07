@@ -1,6 +1,6 @@
 metadata_version: 1
-name: ephys-spikesort-kilosort25-full
-description: "Electrophysiology analysisi pipeline using Kilosort2.5 via SpikeInterface.\n\nThe
+name: aind-capsule-ephys-spikesort-kilosort25-full
+description: "Electrophysiology analysis pipeline using Kilosort2.5 via SpikeInterface.\n\nThe
   pipeline includes:\n- preprocessing: phase_shift, highpass filter, common median
   reference\n- spike sorting: with KS2.5 \n- postprocessing: remove duplicate units,
   compute amplitudes, spike/unit locations, PCA, correlograms, template similarity,
