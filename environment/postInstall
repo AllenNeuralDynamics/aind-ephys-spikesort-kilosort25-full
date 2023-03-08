@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
+# upgrade SV
+pip install --no-cache-dir --ignore-installed sortingview==0.11.12
+
 # install spikeinterface
 pip uninstall -y spikeinterface
 git clone https://github.com/alejoe91/spikeinterface.git
 cd spikeinterface
 git checkout 458aa39d8819f50d3c748fb622ab90151a3d4358
 pip install --no-cache-dir --ignore-installed .[full,widgets]
-cd ..
-
-pip uninstall -y aind-data-schema
-git clone https://github.com/AllenNeuralDynamics/aind-data-schema.git
-cd aind-data-schema
-git checkout 6fc0ec13d6eeeb9e36a62a742e54df0b5135e8aa
-pip install --no-cache-dir --ignore-installed .
 cd ..
 
 # remove warnings

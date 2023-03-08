@@ -54,7 +54,7 @@ n_jobs = os.cpu_count()
 job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
 
 preprocessing_params = dict(
-        preprocessing_strategy="destripe", # 'destripe' or 'cmr'
+        preprocessing_strategy="cmr", # 'destripe' or 'cmr'
         highpass_filter=dict(freq_min=300.0,
                              margin_ms=5.0),
         phase_shift=dict(margin_ms=100.),
@@ -67,8 +67,8 @@ preprocessing_params = dict(
         remove_out_channels=True,
         common_reference=dict(reference='global',
                               operator='median'),
-        highpass_spatial_filter=dict(n_channel_pad=5, 
-                                     n_channel_taper=5, 
+        highpass_spatial_filter=dict(n_channel_pad=60, 
+                                     n_channel_taper=None, 
                                      direction="y",
                                      apply_agc=True, 
                                      agc_window_length_s=0.01, 
@@ -221,6 +221,7 @@ if __name__ == "__main__":
 
     assert PREPROCESSING_STRATEGY in ["cmr", "destripe"], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
     preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
+    print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
 
     if DEBUG:
         print("DEBUG ENABLED")
@@ -659,6 +660,12 @@ if __name__ == "__main__":
         fig_drift_folder.mkdir(exist_ok=True)
         fig_drift.savefig(fig_drift_folder / f"{recording_name}_drift.png", dpi=300)
 
+        # make a sorting view View
+        v_drift = vv.TabLayoutItem(
+            label=f"Drift map",
+            view=vv.Image(image_path=str(fig_drift_folder / f"{recording_name}_drift.png"))
+        )
+
         # timeseries
         if not visualization_params["timeseries"]["skip"]:
             timeseries_tab_items = []
@@ -699,10 +706,13 @@ if __name__ == "__main__":
                                     item2=vv.LayoutItem(w_proc.view)
                                 )
                         v_item = vv.TabLayoutItem(
-                            label=f"Segment {segment_index} - Time: {time_range}",
+                            label=f"Timeseries - Segment {segment_index} - Time: {time_range}",
                             view=view
                         )
                         timeseries_tab_items.append(v_item)
+                # add drift map
+                timeseries_tab_items.append(v_drift)
+
                 v_timeseries = vv.TabLayout(
                     items=timeseries_tab_items
                 )

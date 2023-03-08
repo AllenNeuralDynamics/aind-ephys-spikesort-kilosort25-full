@@ -18,8 +18,8 @@ RUN pip install -U --no-cache-dir --ignore-installed \
     pyvips==2.2.1 \
     cryptography==37.0.4 \
     wavpack-numcodecs==0.1.3 \
-    numba==0.56.3
-    # aind-data-schema==0.12.7
+    numba==0.56.3 \
+    aind-data-schema==0.12.11
     # spikeinterface[full,widgets]==0.97.0
 
 COPY postInstall /
