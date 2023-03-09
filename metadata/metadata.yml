@@ -1,12 +1,12 @@
 metadata_version: 1
-name: aind-capsule-ephys-spikesort-kilosort25-full
+name: Ephys processing pipeline Kilosort2.5
 description: "Electrophysiology analysis pipeline using Kilosort2.5 via SpikeInterface.\n\nThe
   pipeline includes:\n- preprocessing: phase_shift, highpass filter, common median
   reference\n- spike sorting: with KS2.5 \n- postprocessing: remove duplicate units,
   compute amplitudes, spike/unit locations, PCA, correlograms, template similarity,
-  template metrics, and quality metrics\n- curation based on ISI violation ratio,
-  presence ratio, and amplitude cutoff\n- visualization of timeseries and sorting
-  output in sortingview"
+  template metrics, and quality metrics\n- pre-curation based on ISI violation ratio,
+  presence ratio, and amplitude cutoff\n- visualization of timeseries, drift maps,
+  and sorting output in sortingview"
 tags:
 - spike sorting
 - electrophysiology
