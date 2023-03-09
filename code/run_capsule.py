@@ -233,14 +233,6 @@ if __name__ == "__main__":
         # do not use presence ratio for short durations
         curation_params["presence_ratio_threshold"] = 0.1
 
-    preprocessed_output_folder = tmp_folder / "preprocessed"
-
-    print(f"Global job kwargs: {si.get_global_job_kwargs()}")
-    ####### PREPROCESSING #######
-    print("PREPROCESSING")
-    datetime_start_preproc = datetime.now()
-    t_preprocessing_start = time.perf_counter()
-
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
     session = ecephys_sessions[0]
@@ -278,6 +270,15 @@ if __name__ == "__main__":
     experiment_names = [experiments[exp_id]["name"] for exp_id in sorted(exp_ids)]
 
     print(f"Session: {session_name} - Num. Blocks {num_blocks} - Num. streams: {len(stream_names)}")
+    print(f"Global job kwargs: {si.get_global_job_kwargs()}")
+
+
+    ####### PREPROCESSING #######
+    print("PREPROCESSING")
+    preprocessed_output_folder = tmp_folder / "preprocessed"
+
+    datetime_start_preproc = datetime.now()
+    t_preprocessing_start = time.perf_counter()
 
     recording_names = []
     preprocessing_notes = ""
