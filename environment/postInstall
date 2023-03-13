@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
 set -e
 
-# upgrade SV
-pip install --no-cache-dir --ignore-installed sortingview==0.11.12
-
-# install spikeinterface
-pip uninstall -y spikeinterface
-git clone https://github.com/alejoe91/spikeinterface.git
-cd spikeinterface
-git checkout 458aa39d8819f50d3c748fb622ab90151a3d4358
-pip install --no-cache-dir --ignore-installed .[full,widgets]
-cd ..
-
-# remove warnings
+# pin distutils to remove warnings
 pip install --no-cache-dir --ignore-installed setuptools==67.2.0
