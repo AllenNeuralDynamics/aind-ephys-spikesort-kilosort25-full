@@ -165,7 +165,7 @@ postprocessing_params = dict(
     principal_components=dict(n_components=5,
                               mode='by_channel_local',
                               whiten=True),
-    quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names),
+    quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
 )
 
 curation_params = dict(
