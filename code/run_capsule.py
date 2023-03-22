@@ -65,6 +65,8 @@ preprocessing_params = dict(
                                  n_neighbors=11,
                                  seed=0),
         remove_out_channels=True,
+        remove_bad_channels=True,
+        max_bad_channel_fraction_to_remove=0.3, 
         common_reference=dict(reference='global',
                               operator='median'),
         highpass_spatial_filter=dict(n_channel_pad=60, 
@@ -221,7 +223,7 @@ if __name__ == "__main__":
 
     assert PREPROCESSING_STRATEGY in ["cmr", "destripe"], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
     preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
-    print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
+
 
     if DEBUG:
         print("DEBUG ENABLED")
@@ -248,7 +250,6 @@ if __name__ == "__main__":
     else:
         processing = None
 
-    print(f"Preprocessing session: {session_name}")
     ecephys_full_folder = session / "ecephys"
     ecephys_compressed_folder = session / "ecephys_compressed"
     compressed = False
@@ -271,10 +272,11 @@ if __name__ == "__main__":
 
     print(f"Session: {session_name} - Num. Blocks {num_blocks} - Num. streams: {len(stream_names)}")
     print(f"Global job kwargs: {si.get_global_job_kwargs()}")
+    print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
 
 
     ####### PREPROCESSING #######
-    print("PREPROCESSING")
+    print("\n\nPREPROCESSING")
     preprocessed_output_folder = tmp_folder / "preprocessed"
 
     datetime_start_preproc = datetime.now()
@@ -308,8 +310,6 @@ if __name__ == "__main__":
                 else:
                     recordings = si.split_recording(recording)
 
-                print(recordings)
-
                 for i_r, recording in enumerate(recordings):
                     if CONCAT:
                         recording_name = f"{exp_stream_name}_recording"
@@ -319,6 +319,7 @@ if __name__ == "__main__":
                     preprocessing_vizualization_data[recording_name]["timeseries"] = {}
                     recording_names.append(recording_name)
                     print(f"Preprocessing recording: {recording_name}")
+                    print(f"\tDuration: {recording.get_total_duration()} s")
 
                     recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
 
@@ -334,16 +335,16 @@ if __name__ == "__main__":
                     dead_channel_mask = channel_labels == "dead"
                     noise_channel_mask = channel_labels == "noise"
                     out_channel_mask = channel_labels == "out"
-                    print(f"Bad channel detection:")
-                    print(f"dead channels - {np.sum(dead_channel_mask)}\nnoise channels - {np.sum(noise_channel_mask)}\nout channels - {np.sum(out_channel_mask)}")
+                    print(f"\tBad channel detection:")
+                    print(f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}")
                     dead_channel_ids = recording_hp_full.channel_ids[dead_channel_mask]
                     noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
                     out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
 
                     if preprocessing_params["remove_out_channels"]:
-                        print(f"Removing {len(out_channel_ids)} out channels")
+                        print(f"\tRemoving {len(out_channel_ids)} out channels")
                         recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                        preprocessing_notes += f"{recording_name}:\n- removed {len(out_channel_ids)} outside of the brain."
+                        preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
                     else:
                         recording_rm_out = recording_hp_full
                     
@@ -359,20 +360,37 @@ if __name__ == "__main__":
                                                                 )
 
                     preproc_strategy = preprocessing_params["preprocessing_strategy"]
-                    print(f"Removing {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
                     
                     if preproc_strategy == "cmr":
-                        recording_to_save = recording_processed_cmr.remove_channels(bad_channel_ids)
+                        recording_processed = recording_processed_cmr
                     else:
                         # remove interpolated_channels
-                        print(f"Removing {len(bad_channel_ids)} channels after inperpolation and spatial filtering")
-                        recording_to_save = recording_hp_spatial.remove_channels(bad_channel_ids)
-                        preprocessing_notes += f"\n- removed {len(bad_channel_ids)} bad channels after destriping.\n"
+                        recording_processed = recording_hp_spatial
+
+                    skip_processing = False
+                    if preprocessing_params["remove_bad_channels"]:
+                        max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
+                        if len(bad_channel_ids) < int(max_bad_channel_fraction_to_remove * recording_processed.get_num_channels()):
+                            print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
+                            recording_to_save = recording_processed.remove_channels(bad_channel_ids)
+                            preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                        else:
+                            print(f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(bad_channel_ids)}). Skipping further processing for this recording.")
+                            recording_to_save = recording_processed
+                            preprocessing_notes += f"\n- Found {len(bad_channel_ids)} bad channels. Skipping further processing\n"
+                            skip_processing = True
+                    else:
+                        recording_to_save = recording_processed
 
                     # cast to int16
                     recording_to_save = spre.scale(recording_to_save, dtype="int16")
-                    recording_saved = recording_to_save.save(folder=preprocessed_output_folder / recording_name)
-                    print(recording_saved)
+                    if skip_processing:
+                        # here we skip further processing by not saving the recording
+                        recording_saved = recording_to_save
+                    else:
+                        recording_saved = recording_to_save.save(folder=preprocessed_output_folder / recording_name)
+
+                    print("\tDetecting peaks")
                     
                     # detect peaks and y locations for drift rastermap
                     # locally_exclusive + pipeline steps LocalizeCenterOfMass + PeakToPeakFeature
@@ -386,17 +404,13 @@ if __name__ == "__main__":
                     peaks, peak_locations = detect_peaks(recording_saved,  
                                                          pipeline_nodes=pipeline_nodes,
                                                          **visualization_params["drift"]["detection"])
-                    print(f"Detected {len(peaks)} peaks")
+                    print(f"\tDetected {len(peaks)} peaks")
                     preprocessing_vizualization_data[recording_name]["drift"] = dict(
                                                                     recording=recording_saved,
                                                                     peaks=peaks,
                                                                     peak_locations=peak_locations
                                                                 )
     
-    t_preprocessing_end = time.perf_counter()
-    elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
-    print(f"Preprocessing took {elapsed_time_preprocessing}s")
-
     # save params in output
     preprocessing_process = DataProcess(
             name="Ephys preprocessing",
@@ -409,23 +423,33 @@ if __name__ == "__main__":
             parameters=preprocessing_params,
             notes=preprocessing_notes
         )
+    
+    t_preprocessing_end = time.perf_counter()
+    elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
+    print(f"PREPROCESSING time: {elapsed_time_preprocessing}s")
+
 
     ####### SPIKESORTING ########
-    print("SPIKE SORTING")
+    print("\n\nSPIKE SORTING")
     spikesorting_notes = ""
+    sorting_params = None
 
     datetime_start_sorting = datetime.now()
     t_sorting_start = time.perf_counter()
     preprocessed_folder = preprocessed_output_folder
-    assert preprocessed_folder.is_dir(), "Could not find preprocessed folder"
 
     # try results here
     spikesorted_raw_output_folder = scratch_folder / "spikesorted_raw"
     for recording_name in recording_names:
-        print(f"Sorting recording: {recording_name}")
         sorting_output_folder = results_folder / "spikesorted" / recording_name
 
         recording_folder = preprocessed_folder / recording_name
+        if not recording_folder.is_dir():
+            print(f"Skipping sorting for recording: {recording_name}")
+            spikesorting_notes += f"{recording_name}:\n- Skipped spike sorting.\n"
+            sorting_params = {}
+            continue
+        print(f"Sorting recording: {recording_name}")
         recording = si.load_extractor(recording_folder)
         print(recording)
         
@@ -442,14 +466,16 @@ if __name__ == "__main__":
             # save log to results
             sorting_output_folder.mkdir()
             shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
-        print(f"Raw sorting output: {sorting}")
+        print(f"\tRaw sorting output: {sorting}")
         spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
+        if sorting_params is None:
+            sorting_params = sorting.sorting_info["params"]
 
         # remove empty units
         sorting = sorting.remove_empty_units()
         # remove spikes beyond num_Samples (if any)
         sorting = sc.remove_excess_spikes(sorting=sorting, recording=recording)
-        print(f"Sorting output without empty units: {sorting}")
+        print(f"\tSorting output without empty units: {sorting}")
         spikesorting_notes += f"{len(sorting.unit_ids)} after removing empty templates.\n"
         
         if CONCAT:
@@ -458,14 +484,9 @@ if __name__ == "__main__":
                 sorting = si.split_sorting(sorting, recording)
 
         # save results 
-        print(f"Saving results to {sorting_output_folder}")
+        print(f"\tSaving results to {sorting_output_folder}")
         sorting = sorting.save(folder=sorting_output_folder)
-
-    # save params, recording info, and log to processing params
-    t_sorting_end = time.perf_counter()
-    elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
-    print(f"Sorting took {elapsed_time_sorting}s")
-
+    
     # save params in output
     spikesorting_process = DataProcess(
             name="Spike sorting",
@@ -475,24 +496,32 @@ if __name__ == "__main__":
             input_location=str(data_folder),
             output_location=str(results_folder),
             code_url=PIPELINE_URL,
-            parameters=sorting.sorting_info["params"],
+            parameters=sorting_params,
             notes=spikesorting_notes
         )
 
+    t_sorting_end = time.perf_counter()
+    elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
+    print(f"SPIKE SORTING time: {elapsed_time_sorting}s")
+
+
     ###### POSTPROCESSING ########
-    print("POSTPROCESSING")
+    print("\n\nPOSTPROCESSING")
     postprocessing_notes = ""
     datetime_start_postprocessing = datetime.now()
     t_postprocessing_start = time.perf_counter()
 
     spikesorted_folder = results_folder / "spikesorted"
-    assert spikesorted_folder.is_dir(), "Could not find spikesorted folder"
 
     # loop through block-streams
     for recording_name in recording_names:
+        recording_folder = preprocessed_folder / recording_name
+        if not recording_folder.is_dir():
+            print(f"Skipping postprocessing for recording: {recording_name}")
+            postprocessing_notes += f"{recording_name}:\n- Skipped post-processsing.\n"
+            continue
         print(f"Postprocessing recording: {recording_name}")
 
-        recording_folder = preprocessed_folder / recording_name
         recording = si.load_extractor(recording_folder)
 
         # make sure we have spikesorted output for the block-stream
@@ -505,9 +534,9 @@ if __name__ == "__main__":
         we_raw = si.extract_waveforms(recording, sorting, folder=wf_dedup_folder,
                                       **postprocessing_params["waveforms_deduplicate"])
         # de-duplication
-        print(f"Number of original units: {len(we_raw.sorting.unit_ids)}")
+        print(f"\t\tNumber of original units: {len(we_raw.sorting.unit_ids)}")
         sorting_deduplicated = sc.remove_redundant_units(we_raw, duplicate_threshold=curation_params["duplicate_threshold"])
-        print(f"Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
+        print(f"\t\tNumber of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
         postprocessing_notes += f"{recording_name}:\n- Removed {len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids)} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
         # use existing deduplicated waveforms to compute sparsity
@@ -520,35 +549,31 @@ if __name__ == "__main__":
         wf_sparse_folder = results_folder / "postprocessed" / recording_name
 
         # now extract waveforms on de-duplicated units
-        print(f"Saving sparse de-duplicated waveform extractor folder")
+        print(f"\t\tSaving sparse de-duplicated waveform extractor folder")
         we = si.extract_waveforms(recording, sorting_deduplicated, 
                                   folder=wf_sparse_folder, sparsity=sparsity, sparse=True,
                                   overwrite=True, **postprocessing_params["waveforms"])
         # print(f"Making waveforms sparse")
         # sparsity = si.compute_sparsity(we_full, **sparsity_params)
         # we = we_full.save(folder=wf_sparse_folder, sparsity=sparsity)
-        print("Computing spike amplitides")
+        print("\t\tComputing spike amplitides")
         amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
-        print("Computing unit locations")
+        print("\tComputing unit locations")
         unit_locs = spost.compute_unit_locations(we, **postprocessing_params["locations"])
         print("Computing spike locations")
         spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
-        print("Computing correlograms")
+        print("\tComputing correlograms")
         corr = spost.compute_correlograms(we, **postprocessing_params["correlograms"])
-        print("Computing ISI histograms")
+        print("\tComputing ISI histograms")
         tm = spost.compute_isi_histograms(we, **postprocessing_params["isis"])
-        print("Computing template similarity")
+        print("\tComputing template similarity")
         sim = spost.compute_template_similarity(we, **postprocessing_params["similarity"])
-        print("Computing template metrics")
+        print("\tComputing template metrics")
         tm = spost.compute_template_metrics(we, **postprocessing_params["template_metrics"])
-        print("Computing PCA")
+        print("\tComputing PCA")
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
-        print("Computing quality metrics")
+        print("\tComputing quality metrics")
         qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
-
-    t_postprocessing_end = time.perf_counter()
-    elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
-    print(f"Postprocessing took {elapsed_time_postprocessing}s")
 
     # save params in output
     postprocessing_process = DataProcess(
@@ -563,8 +588,13 @@ if __name__ == "__main__":
             notes=postprocessing_notes
         )
 
+    t_postprocessing_end = time.perf_counter()
+    elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
+    print(f"POSTPROCESSING time: {elapsed_time_postprocessing}s")
+
+
     ###### CURATION ##############
-    print("CURATION")
+    print("\n\nCURATION")
     curation_notes = ""
     datetime_start_curation = datetime.now()
     t_curation_start = time.perf_counter()
@@ -579,14 +609,18 @@ if __name__ == "__main__":
     curation_notes += f"Curation query:\n{curation_query}\n"
 
     postprocessed_folder = results_folder / "postprocessed"
-    assert postprocessed_folder.is_dir(), "Could not find postprocessed folder"
 
     # loop through block-streams
     for recording_name in recording_names:
-        print(f"Curating recording: {recording_name}")
 
         recording_folder = postprocessed_folder / recording_name
-        we = si.WaveformExtractor.load_from_folder(recording_folder)
+        if not recording_folder.is_dir():
+            print(f"Skipping curation for recording: {recording_name}")
+            curation_notes += f"{recording_name}:\n- Skipped curation.\n"
+            continue
+        print(f"Curating recording: {recording_name}")
+
+        we = si.load_waveforms(recording_folder)
 
         # get quality metrics
         qm = we.load_extension("quality_metrics").get_data()
@@ -599,11 +633,6 @@ if __name__ == "__main__":
         sorting_precurated.set_property("default_qc", qc_quality)
         sorting_precurated.save(folder=results_folder / "sorting_precurated" / recording_name)
         curation_notes += f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
-
-
-    t_curation_end = time.perf_counter()
-    elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
-    print(f"Curation took {elapsed_time_curation}s")
 
     # save params in output
     curation_process = DataProcess(
@@ -618,13 +647,16 @@ if __name__ == "__main__":
             notes=curation_notes
         )
 
+    t_curation_end = time.perf_counter()
+    elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
+    print(f"CURATION time: {elapsed_time_curation}s")
+
     ###### VISUALIZATION #########
-    print("VISUALIZATION")
+    print("\n\nVISUALIZATION")
     t_visualization_start = time.perf_counter()
     datetime_start_visualization = datetime.now()
 
     postprocessed_folder = results_folder / "postprocessed"
-    assert postprocessed_folder.is_dir(), "Could not find postprocessed folder"
 
     # loop through block-streams
     for recording_name in recording_names:
@@ -633,7 +665,7 @@ if __name__ == "__main__":
             visualization_output[recording_name] = {}
 
         # drift
-        print(f"Visualizing drift maps")
+        print(f"\tVisualizing drift maps")
         drift_data = preprocessing_vizualization_data[recording_name]["drift"]
         recording = drift_data["recording"]
         peaks = drift_data["peaks"]
@@ -670,7 +702,7 @@ if __name__ == "__main__":
         # timeseries
         if not visualization_params["timeseries"]["skip"]:
             timeseries_tab_items = []
-            print(f"Visualizing timeseries")
+            print(f"\tVisualizing timeseries")
 
             # get random chunks to estimate clims
             clims_full = {}
@@ -728,12 +760,16 @@ if __name__ == "__main__":
 
         # sorting summary        
         recording_folder = postprocessed_folder / recording_name
-        we = si.WaveformExtractor.load_from_folder(recording_folder)
+        if not recording_folder.is_dir():
+            print(f"\tSkipping sorting visualization for recording: {recording_name}")
+            continue
+        print(f"\tVisualizing sorting summary")        
+        we = si.load_waveforms(recording_folder)
         sorting_precurated = si.load_extractor(results_folder / "sorting_precurated" / recording_name)
         # set waveform_extractor sorting object to have pass_qc property
         we.sorting = sorting_precurated
 
-        print(f"Visualizing sorting summary")
+        
         if len(we.sorting.unit_ids) > 0:
             # tab layout with Summary and Quality Metrics
             v_qm = sw.plot_quality_metrics(we, skip_metrics=['isi_violations_count', 'rp_violations'], 
@@ -767,11 +803,6 @@ if __name__ == "__main__":
         else:
             print("No units after curation!")
 
-    # save vizualization output
-    t_visualization_end = time.perf_counter()
-    elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
-    print(f"Visualization took {elapsed_time_visualization}s")
-
     # save params in output
     visualization_notes = json.dumps(visualization_output, indent=4)
     # replace special characters
@@ -795,7 +826,13 @@ if __name__ == "__main__":
     # remove escape characters
     visualization_output_file.write_text(visualization_notes)
 
+    # save vizualization output
+    t_visualization_end = time.perf_counter()
+    elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
+    print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
+
+    # construct processing.json
     ephys_data_processes = [
             preprocessing_process,
             spikesorting_process,
@@ -823,4 +860,4 @@ if __name__ == "__main__":
 
     t_global_end = time.perf_counter()
     elapsed_time_global = np.round(t_global_end - t_global_start, 2)
-    print(f"Full pipeline took {elapsed_time_global}s")
+    print(f"FULL PIPELINE time:  {elapsed_time_global}s")
