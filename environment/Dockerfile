@@ -11,7 +11,7 @@ COPY git-askpass /
 RUN apt-get update \
     && apt-get install -y libvips
 # install default fonts
-RUN apt-get -y msttcorefonts fonts-freefont-ttf
+RUN apt-get install -y msttcorefonts fonts-freefont-ttf
 
 RUN pip install -U --no-cache-dir --ignore-installed jupyter
 
