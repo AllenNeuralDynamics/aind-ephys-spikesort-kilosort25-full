@@ -46,7 +46,7 @@ PIPELINE_URL="https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesor
 
 # The GIT folder is not "mounted" when running the reproducible run.
 # We set the version here
-PIPELINE_VERSION = "1.0.0.dev"
+PIPELINE_VERSION = "v1.1"
 GIT_FOLDER = Path(__file__).parent.absolute()
 
 
