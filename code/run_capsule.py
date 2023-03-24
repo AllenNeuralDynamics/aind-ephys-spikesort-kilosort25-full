@@ -66,7 +66,7 @@ preprocessing_params = dict(
                                  seed=0),
         remove_out_channels=True,
         remove_bad_channels=True,
-        max_bad_channel_fraction_to_remove=0.3, 
+        max_bad_channel_fraction_to_remove=0.5, 
         common_reference=dict(reference='global',
                               operator='median'),
         highpass_spatial_filter=dict(n_channel_pad=60, 
