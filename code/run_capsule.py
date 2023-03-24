@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 
 # SPIKEINTERFACE
 import spikeinterface as si
@@ -181,6 +182,7 @@ visualization_params = dict(
     timeseries=dict(n_snippets_per_segment=2, snippet_duration_s=0.5, skip=False),
     drift=dict(detection=dict(method='locally_exclusive', peak_sign='neg', detect_threshold=5, exclude_sweep_ms=0.1), 
                localization=dict(ms_before=0.1, ms_after=0.3, local_radius_um=100.),
+               n_skip=30, alpha=0.15, vmin=-200, vmax=0, cmap="Greys_r",
                figsize=(10, 10))
 )
 
@@ -319,7 +321,7 @@ if __name__ == "__main__":
                     preprocessing_vizualization_data[recording_name]["timeseries"] = {}
                     recording_names.append(recording_name)
                     print(f"Preprocessing recording: {recording_name}")
-                    print(f"\tDuration: {recording.get_total_duration()} s")
+                    print(f"\tDuration: {np.round(recording.get_total_duration(), 2)} s")
 
                     recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
 
@@ -389,27 +391,11 @@ if __name__ == "__main__":
                         recording_saved = recording_to_save
                     else:
                         recording_saved = recording_to_save.save(folder=preprocessed_output_folder / recording_name)
-
-                    print("\tDetecting peaks")
                     
-                    # detect peaks and y locations for drift rastermap
-                    # locally_exclusive + pipeline steps LocalizeCenterOfMass + PeakToPeakFeature
-                    extract_dense_waveforms = ExtractDenseWaveforms(recording_saved, ms_before=visualization_params["drift"]["localization"]["ms_before"],
-                                                                    ms_after=visualization_params["drift"]["localization"]["ms_after"], return_output=False)
-                    pipeline_nodes = [
-                        extract_dense_waveforms,
-                        LocalizeCenterOfMass(recording_saved, local_radius_um=visualization_params["drift"]["localization"]["local_radius_um"], 
-                                             parents=[extract_dense_waveforms]),
-                    ]
-                    peaks, peak_locations = detect_peaks(recording_saved,  
-                                                         pipeline_nodes=pipeline_nodes,
-                                                         **visualization_params["drift"]["detection"])
-                    print(f"\tDetected {len(peaks)} peaks")
                     preprocessing_vizualization_data[recording_name]["drift"] = dict(
-                                                                    recording=recording_saved,
-                                                                    peaks=peaks,
-                                                                    peak_locations=peak_locations
-                                                                )
+                                                            recording=recording_saved
+                                                        )
+
     t_preprocessing_end = time.perf_counter()
     elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
 
@@ -460,7 +446,7 @@ if __name__ == "__main__":
         # run ks2.5
         try:
             sorting = ss.run_sorter(sorter_name, recording, output_folder=spikesorted_raw_output_folder / recording_name,
-                                    verbose=True, delete_output_folder=True, **sorter_params)
+                                    verbose=False, delete_output_folder=True, **sorter_params)
         except Exception as e:
             # save log to results
             sorting_output_folder.mkdir()
@@ -534,9 +520,8 @@ if __name__ == "__main__":
         we_raw = si.extract_waveforms(recording, sorting, folder=wf_dedup_folder,
                                       **postprocessing_params["waveforms_deduplicate"])
         # de-duplication
-        print(f"\t\tNumber of original units: {len(we_raw.sorting.unit_ids)}")
         sorting_deduplicated = sc.remove_redundant_units(we_raw, duplicate_threshold=curation_params["duplicate_threshold"])
-        print(f"\t\tNumber of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
+        print(f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
         postprocessing_notes += f"{recording_name}:\n- Removed {len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids)} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
         # use existing deduplicated waveforms to compute sparsity
@@ -549,18 +534,15 @@ if __name__ == "__main__":
         wf_sparse_folder = results_folder / "postprocessed" / recording_name
 
         # now extract waveforms on de-duplicated units
-        print(f"\t\tSaving sparse de-duplicated waveform extractor folder")
+        print(f"\tSaving sparse de-duplicated waveform extractor folder")
         we = si.extract_waveforms(recording, sorting_deduplicated, 
                                   folder=wf_sparse_folder, sparsity=sparsity, sparse=True,
                                   overwrite=True, **postprocessing_params["waveforms"])
-        # print(f"Making waveforms sparse")
-        # sparsity = si.compute_sparsity(we_full, **sparsity_params)
-        # we = we_full.save(folder=wf_sparse_folder, sparsity=sparsity)
-        print("\t\tComputing spike amplitides")
+        print("\tComputing spike amplitides")
         amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
         print("\tComputing unit locations")
         unit_locs = spost.compute_unit_locations(we, **postprocessing_params["locations"])
-        print("Computing spike locations")
+        print("\tComputing spike locations")
         spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
         print("\tComputing correlograms")
         corr = spost.compute_correlograms(we, **postprocessing_params["correlograms"])
@@ -605,8 +587,8 @@ if __name__ == "__main__":
     amplitude_cutoff_thr = curation_params["amplitude_cutoff_threshold"]
 
     curation_query = f"isi_violations_ratio < {isi_violations_ratio_thr} and presence_ratio > {presence_ratio_thr} and amplitude_cutoff < {amplitude_cutoff_thr}"
-    print(f"Curation query:\n{curation_query}")
-    curation_notes += f"Curation query:\n{curation_query}\n"
+    print(f"Curation query: {curation_query}")
+    curation_notes += f"Curation query: {curation_query}\n"
 
     postprocessed_folder = results_folder / "postprocessed"
 
@@ -665,24 +647,58 @@ if __name__ == "__main__":
             visualization_output[recording_name] = {}
 
         # drift
-        print(f"\tVisualizing drift maps")
-        drift_data = preprocessing_vizualization_data[recording_name]["drift"]
-        recording = drift_data["recording"]
-        peaks = drift_data["peaks"]
-        peak_locations = drift_data["peak_locations"]
+        cmap = plt.get_cmap(visualization_params["drift"]["cmap"])
+        norm = colors.Normalize(vmin=visualization_params["drift"]["vmin"], vmax=visualization_params["drift"]["vmax"], clip=True)
+        n_skip = visualization_params["drift"]["n_skip"]
+        alpha = visualization_params["drift"]["alpha"]
+
+        # use spike locations
+        if postprocessed_folder.is_dir():
+            print(f"\tVisualizing drift maps using spike sorted data")
+            we = si.load_waveforms(recording_folder)
+            recording = we.recording
+            peaks = we.sorting.to_spike_vector()
+            peak_locations = we.load_extension("spike_locations").get_data()
+            peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
+        # otherwise etect peaks
+        else:
+            print(f"\tVisualizing drift maps using detected peaks (no spike sorting available)")
+            # locally_exclusive + pipeline steps LocalizeCenterOfMass + PeakToPeakFeature
+            drift_data = preprocessing_vizualization_data[recording_name]["drift"]
+            recording = drift_data["recording"]
+            extract_dense_waveforms = ExtractDenseWaveforms(recording, ms_before=visualization_params["drift"]["localization"]["ms_before"],
+                                                            ms_after=visualization_params["drift"]["localization"]["ms_after"], return_output=False)
+            localize_peaks = LocalizeCenterOfMass(recording, local_radius_um=visualization_params["drift"]["localization"]["local_radius_um"], 
+                                                  parents=[extract_dense_waveforms])
+            pipeline_nodes = [
+                extract_dense_waveforms,
+                localize_peaks
+            ]
+            peaks, peak_locations = detect_peaks(recording_saved,  
+                                                 pipeline_nodes=pipeline_nodes,
+                                                 **visualization_params["drift"]["detection"])
+            print(f"\tDetected {len(peaks)} peaks")
+            peak_amps = peaks["amplitude"]
 
         y_locs = recording.get_channel_locations()[:, 1]
         ylim = [np.min(y_locs), np.max(y_locs)]
+
         fig_drift, axs_drift = plt.subplots(ncols=recording.get_num_segments(), figsize=visualization_params["drift"]["figsize"])
         for segment_index in range(recording.get_num_segments()):
             segment_mask = peaks["segment_ind"] == segment_index
             x = peaks[segment_mask]['sample_ind'] / recording.sampling_frequency
             y = peak_locations[segment_mask]['y']
+            # subsample
+            x_sub = x[::n_skip]
+            y_sub = y[::n_skip]
+            a_sub = peak_amps[::n_skip]
+            colors = cmap(norm(a_sub))
+
             if recording.get_num_segments() == 1:
                 ax_drift = axs_drift
             else:
                 ax_drift = axs_drift[segment_index]
-            ax_drift.scatter(x, y, s=1, color='k', alpha=0.01)
+            ax_drift.scatter(x_sub, y_sub, s=1, c=colors, alpha=alpha)
             ax_drift.set_xlabel("time (s)", fontsize=12)
             ax_drift.set_ylabel("depth ($\mu$m)", fontsize=12)
             ax_drift.set_xlim(0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency)
@@ -751,7 +767,7 @@ if __name__ == "__main__":
                 )
                 try:
                     url = v_timeseries.url(label=f"{session_name} - {recording_name}")
-                    print(url)
+                    print(f"\n{url}\n")
                     visualization_output[recording_name]["timeseries"] = url
                 except Exception as e:
                     print("KCL error", e)
@@ -795,7 +811,7 @@ if __name__ == "__main__":
                 gh_path = f"{GH_CURATION_REPO}/{session_name}/{recording_name}/{sorter_name}/curation.json"
                 state = dict(sortingCuration=gh_path)
                 url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary", state=state)
-                print(url)
+                print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 
             except Exception as e:
@@ -860,4 +876,4 @@ if __name__ == "__main__":
 
     t_global_end = time.perf_counter()
     elapsed_time_global = np.round(t_global_end - t_global_start, 2)
-    print(f"FULL PIPELINE time:  {elapsed_time_global}s")
+    print(f"\n\nFULL PIPELINE time:  {elapsed_time_global}s")
