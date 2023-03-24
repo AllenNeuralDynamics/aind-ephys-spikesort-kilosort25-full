@@ -410,7 +410,9 @@ if __name__ == "__main__":
                                                                     peaks=peaks,
                                                                     peak_locations=peak_locations
                                                                 )
-    
+    t_preprocessing_end = time.perf_counter()
+    elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
+
     # save params in output
     preprocessing_process = DataProcess(
             name="Ephys preprocessing",
@@ -423,9 +425,6 @@ if __name__ == "__main__":
             parameters=preprocessing_params,
             notes=preprocessing_notes
         )
-    
-    t_preprocessing_end = time.perf_counter()
-    elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
     print(f"PREPROCESSING time: {elapsed_time_preprocessing}s")
 
 
@@ -487,6 +486,10 @@ if __name__ == "__main__":
         print(f"\tSaving results to {sorting_output_folder}")
         sorting = sorting.save(folder=sorting_output_folder)
     
+
+    t_sorting_end = time.perf_counter()
+    elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
+
     # save params in output
     spikesorting_process = DataProcess(
             name="Spike sorting",
@@ -499,9 +502,6 @@ if __name__ == "__main__":
             parameters=sorting_params,
             notes=spikesorting_notes
         )
-
-    t_sorting_end = time.perf_counter()
-    elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
     print(f"SPIKE SORTING time: {elapsed_time_sorting}s")
 
 
@@ -575,6 +575,9 @@ if __name__ == "__main__":
         print("\tComputing quality metrics")
         qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
 
+    t_postprocessing_end = time.perf_counter()
+    elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
+
     # save params in output
     postprocessing_process = DataProcess(
             name="Ephys postprocessing",
@@ -587,9 +590,6 @@ if __name__ == "__main__":
             parameters=postprocessing_params,
             notes=postprocessing_notes
         )
-
-    t_postprocessing_end = time.perf_counter()
-    elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
     print(f"POSTPROCESSING time: {elapsed_time_postprocessing}s")
 
 
@@ -634,6 +634,9 @@ if __name__ == "__main__":
         sorting_precurated.save(folder=results_folder / "sorting_precurated" / recording_name)
         curation_notes += f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
 
+    t_curation_end = time.perf_counter()
+    elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
+
     # save params in output
     curation_process = DataProcess(
             name="Ephys curation",
@@ -646,9 +649,6 @@ if __name__ == "__main__":
             parameters=curation_params,
             notes=curation_notes
         )
-
-    t_curation_end = time.perf_counter()
-    elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
     print(f"CURATION time: {elapsed_time_curation}s")
 
     ###### VISUALIZATION #########
@@ -809,6 +809,15 @@ if __name__ == "__main__":
     visualization_notes = visualization_notes.replace('\\"', "%22")
     visualization_notes = visualization_notes.replace('#', "%23")
 
+    # save vizualization output
+    visualization_output_file = results_folder / "visualization_output.json"
+    # remove escape characters
+    visualization_output_file.write_text(visualization_notes)
+
+    # save vizualization output
+    t_visualization_end = time.perf_counter()
+    elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
+
     visualization_process = DataProcess(
             name="Ephys visualization",
             version=PIPELINE_VERSION, # either release or git commit
@@ -820,15 +829,6 @@ if __name__ == "__main__":
             parameters=visualization_params,
             notes=visualization_notes
         )
-
-    # save vizualization output
-    visualization_output_file = results_folder / "visualization_output.json"
-    # remove escape characters
-    visualization_output_file.write_text(visualization_notes)
-
-    # save vizualization output
-    t_visualization_end = time.perf_counter()
-    elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
 
