@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+from matplotlib.colors import Normalize
 
 # SPIKEINTERFACE
 import spikeinterface as si
@@ -37,18 +37,15 @@ from aind_data_schema import Processing
 from aind_data_schema.processing import DataProcess
 
 # LOCAL
-from utils import get_git_commit_or_tag
+from version import version as __version__
 
 matplotlib.use("agg")
 
 GH_CURATION_REPO = "gh://AllenNeuralDynamics/ephys-sorting-manual-curation/main"
 PIPELINE_URL="https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
 
-# The GIT folder is not "mounted" when running the reproducible run.
-# We set the version here
-PIPELINE_VERSION = "v1.1"
-GIT_FOLDER = Path(__file__).parent.absolute()
-
+# Retrieve pipeline version
+PIPELINE_VERSION = __version__
 
 ### PARAMS ###
 n_jobs = os.cpu_count()
@@ -648,7 +645,7 @@ if __name__ == "__main__":
 
         # drift
         cmap = plt.get_cmap(visualization_params["drift"]["cmap"])
-        norm = colors.Normalize(vmin=visualization_params["drift"]["vmin"], vmax=visualization_params["drift"]["vmax"], clip=True)
+        norm = Normalize(vmin=visualization_params["drift"]["vmin"], vmax=visualization_params["drift"]["vmax"], clip=True)
         n_skip = visualization_params["drift"]["n_skip"]
         alpha = visualization_params["drift"]["alpha"]
 
