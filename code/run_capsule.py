@@ -340,57 +340,53 @@ if __name__ == "__main__":
                     noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
                     out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
 
-                    if preprocessing_params["remove_out_channels"]:
-                        print(f"\tRemoving {len(out_channel_ids)} out channels")
-                        recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                        preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
-                    else:
-                        recording_rm_out = recording_hp_full
-                    
-                    recording_processed_cmr = spre.common_reference(recording_rm_out, **preprocessing_params["common_reference"])
-
-                    bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
-                    recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
-                    recording_hp_spatial = spre.highpass_spatial_filter(recording_interp, **preprocessing_params["highpass_spatial_filter"])
-                    preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
-                                                                    highpass=recording_rm_out,
-                                                                    cmr=recording_processed_cmr,
-                                                                    highpass_spatial=recording_hp_spatial
-                                                                )
-
-                    preproc_strategy = preprocessing_params["preprocessing_strategy"]
-                    
-                    if preproc_strategy == "cmr":
-                        recording_processed = recording_processed_cmr
-                    else:
-                        # remove interpolated_channels
-                        recording_processed = recording_hp_spatial
+                    all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
 
                     skip_processing = False
-                    if preprocessing_params["remove_bad_channels"]:
-                        max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-                        if len(bad_channel_ids) < int(max_bad_channel_fraction_to_remove * recording_processed.get_num_channels()):
-                            print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
-                            recording_to_save = recording_processed.remove_channels(bad_channel_ids)
-                            preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                    max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
+                    if len(all_bad_channel_ids) >= int(max_bad_channel_fraction_to_remove * recording.get_num_channels()):
+                        print(f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
+                              f"Skipping further processing for this recording.")            
+                        preprocessing_notes += f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
+                        skip_processing = True
+                        # in this case, processed timeseries will not be visualized
+                        preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = None
+                        recording_drift = recording_hp_full
+                    else:
+                        if preprocessing_params["remove_out_channels"]:
+                            print(f"\tRemoving {len(out_channel_ids)} out channels")
+                            recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
+                            preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
                         else:
-                            print(f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(bad_channel_ids)}). Skipping further processing for this recording.")
-                            recording_to_save = recording_processed
-                            preprocessing_notes += f"\n- Found {len(bad_channel_ids)} bad channels. Skipping further processing\n"
-                            skip_processing = True
-                    else:
-                        recording_to_save = recording_processed
+                            recording_rm_out = recording_hp_full
 
-                    # cast to int16
-                    recording_to_save = spre.scale(recording_to_save, dtype="int16")
-                    if skip_processing:
-                        # here we skip further processing by not saving the recording
-                        recording_saved = recording_to_save
-                    else:
-                        recording_saved = recording_to_save.save(folder=preprocessed_output_folder / recording_name)
-                    
+                        recording_processed_cmr = spre.common_reference(recording_rm_out, **preprocessing_params["common_reference"])
+
+                        bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
+                        recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
+                        recording_hp_spatial = spre.highpass_spatial_filter(recording_interp, **preprocessing_params["highpass_spatial_filter"])
+                        preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
+                                                                        highpass=recording_rm_out,
+                                                                        cmr=recording_processed_cmr,
+                                                                        highpass_spatial=recording_hp_spatial
+                                                                    )
+
+                        preproc_strategy = preprocessing_params["preprocessing_strategy"]
+                        if preproc_strategy == "cmr":
+                            recording_processed = recording_processed_cmr
+                        else:
+                            recording_processed = recording_hp_spatial
+
+                        if preprocessing_params["remove_bad_channels"]:
+                            print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
+                            recording_processed = recording_processed.remove_channels(bad_channel_ids)
+                            preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                        recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
+                        recording_drift = recording_saved
+
+                    # store recording for drift visualization
                     preprocessing_vizualization_data[recording_name]["drift"] = dict(
-                                                            recording=recording_saved
+                                                            recording=recording_drift
                                                         )
 
     t_preprocessing_end = time.perf_counter()
@@ -671,7 +667,7 @@ if __name__ == "__main__":
                 extract_dense_waveforms,
                 localize_peaks
             ]
-            peaks, peak_locations = detect_peaks(recording_saved,  
+            peaks, peak_locations = detect_peaks(recording,
                                                  pipeline_nodes=pipeline_nodes,
                                                  **visualization_params["drift"]["detection"])
             print(f"\tDetected {len(peaks)} peaks")
@@ -717,21 +713,24 @@ if __name__ == "__main__":
             timeseries_tab_items = []
             print(f"\tVisualizing timeseries")
 
-            # get random chunks to estimate clims
-            clims_full = {}
             timeseries_data = preprocessing_vizualization_data[recording_name]["timeseries"]
             recording_full_dict = timeseries_data["full"]
             recording_proc_dict = timeseries_data["proc"]
 
+            # get random chunks to estimate clims
+            clims_full = {}
             for layer, rec in recording_full_dict.items():
                 chunk = si.get_random_data_chunks(rec)
                 max_value = np.quantile(chunk, 0.99) * 1.2
                 clims_full[layer] = (-max_value, max_value)
             clims_proc = {}
-            for layer, rec in recording_proc_dict.items():
-                chunk = si.get_random_data_chunks(rec)
-                max_value = np.quantile(chunk, 0.99) * 1.2
-                clims_proc[layer] = (-max_value, max_value)
+            if recording_proc_dict is not None:
+                for layer, rec in recording_proc_dict.items():
+                    chunk = si.get_random_data_chunks(rec)
+                    max_value = np.quantile(chunk, 0.99) * 1.2
+                    clims_proc[layer] = (-max_value, max_value)
+            else:
+                print(f"\tPreprocessed timeseries not avaliable")
 
             fs = recording.get_sampling_frequency()
             n_snippets_per_seg = visualization_params["timeseries"]["n_snippets_per_segment"]
@@ -744,13 +743,16 @@ if __name__ == "__main__":
                         time_range = np.round(np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]), 1)
                         w_full = sw.plot_timeseries(recording_full_dict, order_channel_by_depth=True, time_range=time_range, 
                                                     segment_index=segment_index, clim=clims_full, backend="sortingview", generate_url=False)
-                        w_proc = sw.plot_timeseries(recording_proc_dict, order_channel_by_depth=True, time_range=time_range, 
-                                                    segment_index=segment_index, clim=clims_proc, backend="sortingview", generate_url=False)
-                        view = vv.Splitter(
-                                    direction='horizontal',
-                                    item1=vv.LayoutItem(w_full.view),
-                                    item2=vv.LayoutItem(w_proc.view)
-                                )
+                        if recording_proc_dict is not None:
+                            w_proc = sw.plot_timeseries(recording_proc_dict, order_channel_by_depth=True, time_range=time_range, 
+                                                        segment_index=segment_index, clim=clims_proc, backend="sortingview", generate_url=False)
+                            view = vv.Splitter(
+                                        direction='horizontal',
+                                        item1=vv.LayoutItem(w_full.view),
+                                        item2=vv.LayoutItem(w_proc.view)
+                                    )
+                        else:
+                            view = w_full.view
                         v_item = vv.TabLayoutItem(
                             label=f"Timeseries - Segment {segment_index} - Time: {time_range}",
                             view=view
