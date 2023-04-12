@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -e
 
-# pin distutils to remove warnings
+# pin setuptools to remove warnings
 pip install --no-cache-dir --ignore-installed setuptools==67.2.0
