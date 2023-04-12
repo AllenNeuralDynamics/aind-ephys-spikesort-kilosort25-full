@@ -245,7 +245,10 @@ if __name__ == "__main__":
         shutil.copy(json_file, results_folder)
 
     if (session / "processing.json").is_file():
-        processing = Processing.parse_file(session / "processing.json")
+        with open(session / "processing.json", "r") as processing_file:
+            processing_json = json.load(processing_file)
+        # Allow for parsing earlier versions of Processing files
+        processing = Processing.construct(**processing_json)
     else:
         processing = None
 
