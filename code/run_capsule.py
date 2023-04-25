@@ -638,7 +638,12 @@ if __name__ == "__main__":
 
     # loop through block-streams
     for recording_name in recording_names:
+        recording_folder = postprocessed_folder / recording_name
+        if not recording_folder.is_dir():
+            print(f"\tSkipping sorting visualization for recording: {recording_name}")
+            continue
         print(f"Visualizing recording: {recording_name}")
+        
         if recording_name not in visualization_output:
             visualization_output[recording_name] = {}
 
@@ -777,10 +782,6 @@ if __name__ == "__main__":
                 print(f"Something wrong when visualizing timeseries: {e}")
 
         # sorting summary        
-        recording_folder = postprocessed_folder / recording_name
-        if not recording_folder.is_dir():
-            print(f"\tSkipping sorting visualization for recording: {recording_name}")
-            continue
         print(f"\tVisualizing sorting summary")        
         we = si.load_waveforms(recording_folder)
         sorting_precurated = si.load_extractor(results_folder / "sorting_precurated" / recording_name)
