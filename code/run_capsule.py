@@ -290,7 +290,7 @@ if __name__ == "__main__":
     for block_index in range(num_blocks):
         for stream_name in stream_names:
             # skip NIDAQ and NP1-LFP streams
-            if "NI-DAQ" not in stream_name and "LFP" not in stream_name:
+            if "NI-DAQ" not in stream_name and "LFP" not in stream_name and "Rhythm" not in stream_name:
                 experiment_name = experiment_names[block_index]
                 exp_stream_name = f"{experiment_name}_{stream_name}"
 
