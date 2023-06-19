@@ -244,8 +244,9 @@ if __name__ == "__main__":
     metadata_json_files = [
         p
         for p in session.iterdir()
-        if p.suffix == ".json" and "processing" not in p.name or "data_description" not in p.name
+        if p.is_file() and p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name
     ]
+    print(metadata_json_files)
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
 
@@ -950,9 +951,9 @@ if __name__ == "__main__":
         data_description_dict["creation_date"] = now.date()
         data_description_dict["input_data_name"] = session_name
         data_description_dict["institution"] = Institution.AIND
-        data_description_dict["inverstigators"] = []
-        data_description_dict["funding_source"] = Funding(funder="AIND")
-        data_description_dict["modality"] = Modality.ECEPHYS
+        data_description_dict["investigators"] = []
+        data_description_dict["funding_source"] = [Funding(funder="AIND")]
+        data_description_dict["modality"] = [Modality.ECEPHYS]
         data_description_dict["experiment_type"] = ExperimentType.ECEPHYS
         data_description_dict["subject_id"] = session_name.split("_")[1]
     else:
