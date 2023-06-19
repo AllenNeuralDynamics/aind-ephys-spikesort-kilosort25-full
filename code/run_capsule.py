@@ -958,7 +958,7 @@ if __name__ == "__main__":
     else:
         from aind_data_schema.data_description import Institution
 
-        data_description_dict = data_description.to_dict()
+        data_description_dict = data_description.dict()
         skip_keys = ["version", "data_level", "described_by", "ror_id"]
         for key in skip_keys:
             if key in data_description_dict:
