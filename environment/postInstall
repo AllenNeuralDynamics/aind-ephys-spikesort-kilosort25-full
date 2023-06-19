@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
+# install spikeinterface from source
+git clone https://github.com/SpikeInterface/spikeinterface.git
+cd spikeinterface
+git checkout 4fb703d2caa23a8bc38706c29a845ea12d63538f
+pip install --no-cache-dir --ignore-installed .[full,widgets]
+cd ..
+
 # pin setuptools to remove warnings
 pip install --no-cache-dir --ignore-installed setuptools==67.2.0

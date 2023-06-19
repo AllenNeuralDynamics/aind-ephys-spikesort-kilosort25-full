@@ -246,7 +246,6 @@ if __name__ == "__main__":
         for p in session.iterdir()
         if p.is_file() and p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name
     ]
-    print(metadata_json_files)
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
 
