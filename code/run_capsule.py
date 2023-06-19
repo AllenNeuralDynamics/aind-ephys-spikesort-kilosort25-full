@@ -942,6 +942,7 @@ if __name__ == "__main__":
     # construct data_description.json
     if data_description is None:
         from aind_data_schema.data_description import Institution, Funding, Modality, ExperimentType
+        print("Constructing derived data description from scratch")
 
         # make from scratch:
         data_description_dict = {}
@@ -957,7 +958,7 @@ if __name__ == "__main__":
         data_description_dict["subject_id"] = session_name.split("_")[1]
     else:
         from aind_data_schema.data_description import Institution
-
+        print("Constructing derived data description from existing data description")
         data_description_dict = data_description.dict()
         skip_keys = ["version", "data_level", "described_by", "ror_id"]
         for key in skip_keys:
