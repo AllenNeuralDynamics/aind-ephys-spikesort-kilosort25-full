@@ -741,8 +741,8 @@ if __name__ == "__main__":
             ncols=recording.get_num_segments(), figsize=visualization_params["drift"]["figsize"]
         )
         for segment_index in range(recording.get_num_segments()):
-            segment_mask = peaks["segment_ind"] == segment_index
-            x = peaks[segment_mask]["sample_ind"] / recording.sampling_frequency
+            segment_mask = peaks["segment_index"] == segment_index
+            x = peaks[segment_mask]["sample_index"] / recording.sampling_frequency
             y = peak_locations[segment_mask]["y"]
             # subsample
             x_sub = x[::n_skip]
