@@ -960,7 +960,7 @@ if __name__ == "__main__":
         from aind_data_schema.data_description import Institution
         print("Constructing derived data description from existing data description")
         data_description_dict = data_description.dict()
-        skip_keys = ["version", "data_level", "described_by", "ror_id"]
+        skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id"]
         for key in skip_keys:
             if key in data_description_dict:
                 del data_description_dict[key]
