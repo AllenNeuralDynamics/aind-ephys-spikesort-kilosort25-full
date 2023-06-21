@@ -960,9 +960,9 @@ if __name__ == "__main__":
         print("Constructing derived data description from existing data description")
         existing_data_description_dict = data_description.dict()
         skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id",
-                     "creation_time", "creation_date"]
+                     "creation_time", "creation_date", "institution"]
         for key in skip_keys:
-            if key in data_description_dict:
+            if key in existing_data_description_dict:
                 del existing_data_description_dict[key]
         data_description_dict.update(existing_data_description_dict)
         data_description_dict["input_data_name"] = existing_data_description_dict["name"]
