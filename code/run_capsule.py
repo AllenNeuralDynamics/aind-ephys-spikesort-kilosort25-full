@@ -143,20 +143,10 @@ postprocessing_params = dict(
         precompute_template=("average", "std"),
         use_relative_path=True,
     ),
-    spike_amplitudes=dict(
-        peak_sign="neg",
-        return_scaled=True,
-        outputs="concatenated",
-    ),
+    spike_amplitudes=dict(peak_sign="neg", return_scaled=True, outputs="concatenated",),
     similarity=dict(method="cosine_similarity"),
-    correlograms=dict(
-        window_ms=100.0,
-        bin_ms=2.0,
-    ),
-    isis=dict(
-        window_ms=100.0,
-        bin_ms=5.0,
-    ),
+    correlograms=dict(window_ms=100.0, bin_ms=2.0,),
+    isis=dict(window_ms=100.0, bin_ms=5.0,),
     locations=dict(method="monopolar_triangulation"),
     template_metrics=dict(upsampling_factor=10, sparsity=None),
     principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
@@ -274,7 +264,7 @@ if __name__ == "__main__":
     elif len(session_name.split("_")) > 1:
         subject_id = session_name.split("_")[1]
     else:
-        subject_id = "000000" # unknown
+        subject_id = "000000"  # unknown
 
     ecephys_full_folder = session / "ecephys"
     ecephys_compressed_folder = session / "ecephys_compressed"
@@ -950,7 +940,6 @@ if __name__ == "__main__":
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
 
-
     now = datetime.now()
     # make from scratch:
     data_description_dict = {}
@@ -971,12 +960,23 @@ if __name__ == "__main__":
         existing_version = existing_data_description_dict.get("schema_version")
         if existing_version is not None and parse(existing_version) < parse("0.4.0"):
             print(f"Fixing fields for schema version {existing_version}")
-            existing_data_description_dict["institution"] = dd.Institution(existing_data_description_dict["institution"])
+            existing_data_description_dict["institution"] = dd.Institution(
+                existing_data_description_dict["institution"]
+            )
             existing_data_description_dict["modality"] = [dd.Modality.ECEPHYS]
         else:
-            existing_data_description_dict["institution"] = dd.Institution(existing_data_description_dict["institution"]["abbreviation"])
-        skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id",
-                     "creation_time", "creation_date"]
+            existing_data_description_dict["institution"] = dd.Institution(
+                existing_data_description_dict["institution"]["abbreviation"]
+            )
+        skip_keys = [
+            "schema_version",
+            "version",
+            "data_level",
+            "described_by",
+            "ror_id",
+            "creation_time",
+            "creation_date",
+        ]
         for key in skip_keys:
             if key in existing_data_description_dict:
                 del existing_data_description_dict[key]
