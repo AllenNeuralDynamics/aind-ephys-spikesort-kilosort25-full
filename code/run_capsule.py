@@ -12,6 +12,7 @@ import json
 import sys
 import time
 from datetime import datetime, timedelta
+from packaging.version import parse
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -33,9 +34,8 @@ import sortingview.views as vv
 
 
 # AIND
-from aind_data_schema import Processing, DataDescription, DerivedDataDescription
-from aind_data_schema.processing import DataProcess
-from aind_data_schema.data_description import Institution, Funding, Modality, ExperimentType
+import aind_data_schema.data_description as dd
+from aind_data_schema.processing import DataProcess, Processing
 
 
 # LOCAL
@@ -263,9 +263,18 @@ if __name__ == "__main__":
         with open(session / "data_description.json", "r") as data_description_file:
             data_description_json = json.load(data_description_file)
         # Allow for parsing earlier versions of Processing files
-        data_description = DataDescription.construct(**data_description_json)
+        data_description = dd.DataDescription.construct(**data_description_json)
     else:
         data_description = None
+
+    if (session / "subject.json").is_file():
+        with open(session / "subject.json", "r") as subject_file:
+            subject_info = json.load(subject_file)
+        subject_id = subject_info["subject_id"]
+    elif len(session_name.split("_")) > 1:
+        subject_id = session_name.split("_")[1]
+    else:
+        subject_id = "000000" # unknown
 
     ecephys_full_folder = session / "ecephys"
     ecephys_compressed_folder = session / "ecephys_compressed"
@@ -948,26 +957,33 @@ if __name__ == "__main__":
     data_description_dict["creation_time"] = now.time()
     data_description_dict["creation_date"] = now.date()
     data_description_dict["input_data_name"] = session_name
-    data_description_dict["institution"] = Institution.AIND
+    data_description_dict["institution"] = dd.Institution.AIND
     data_description_dict["investigators"] = []
-    data_description_dict["funding_source"] = [Funding(funder="AIND")]
-    data_description_dict["modality"] = [Modality.ECEPHYS]
-    data_description_dict["experiment_type"] = ExperimentType.ECEPHYS
-    data_description_dict["subject_id"] = session_name.split("_")[1]
+    data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
+    data_description_dict["modality"] = [dd.Modality.ECEPHYS]
+    data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+    data_description_dict["subject_id"] = subject_id
 
     # construct data_description.json
     if data_description is not None:
         print("Constructing derived data description from existing data description")
         existing_data_description_dict = data_description.dict()
+        existing_version = existing_data_description_dict.get("schema_version")
+        if existing_version is not None and parse(existing_version) < parse("0.4.0"):
+            print(f"Fixing fields for schema version {existing_version}")
+            existing_data_description_dict["institution"] = dd.Institution(existing_data_description_dict["institution"])
+            existing_data_description_dict["modality"] = [dd.Modality.ECEPHYS]
+        else:
+            existing_data_description_dict["institution"] = dd.Institution(existing_data_description_dict["institution"]["abbreviation"])
         skip_keys = ["schema_version", "version", "data_level", "described_by", "ror_id",
-                     "creation_time", "creation_date", "institution"]
+                     "creation_time", "creation_date"]
         for key in skip_keys:
             if key in existing_data_description_dict:
                 del existing_data_description_dict[key]
         data_description_dict.update(existing_data_description_dict)
         data_description_dict["input_data_name"] = existing_data_description_dict["name"]
 
-    derived_data_description = DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
+    derived_data_description = dd.DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
