@@ -143,10 +143,20 @@ postprocessing_params = dict(
         precompute_template=("average", "std"),
         use_relative_path=True,
     ),
-    spike_amplitudes=dict(peak_sign="neg", return_scaled=True, outputs="concatenated",),
+    spike_amplitudes=dict(
+        peak_sign="neg",
+        return_scaled=True,
+        outputs="concatenated",
+    ),
     similarity=dict(method="cosine_similarity"),
-    correlograms=dict(window_ms=100.0, bin_ms=2.0,),
-    isis=dict(window_ms=100.0, bin_ms=5.0,),
+    correlograms=dict(
+        window_ms=100.0,
+        bin_ms=2.0,
+    ),
+    isis=dict(
+        window_ms=100.0,
+        bin_ms=5.0,
+    ),
     locations=dict(method="monopolar_triangulation"),
     template_metrics=dict(upsampling_factor=10, sparsity=None),
     principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
@@ -250,12 +260,9 @@ if __name__ == "__main__":
         processing = None
 
     if (session / "data_description.json").is_file():
-        with open(session / "data_description.json", "r") as data_description_file:
-            data_description_json = json.load(data_description_file)
-        # Allow for parsing earlier versions of Processing files
-        data_description = dd.DataDescription.construct(**data_description_json)
+        has_data_description = True
     else:
-        data_description = None
+        has_data_description = False
 
     if (session / "subject.json").is_file():
         with open(session / "subject.json", "r") as subject_file:
@@ -940,50 +947,21 @@ if __name__ == "__main__":
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
 
-    now = datetime.now()
-    # make from scratch:
-    data_description_dict = {}
-    data_description_dict["creation_time"] = now.time()
-    data_description_dict["creation_date"] = now.date()
-    data_description_dict["input_data_name"] = session_name
-    data_description_dict["institution"] = dd.Institution.AIND
-    data_description_dict["investigators"] = []
-    data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
-    data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-    data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
-    data_description_dict["subject_id"] = subject_id
-
-    # construct data_description.json
-    if data_description is not None:
-        print("Constructing derived data description from existing data description")
-        existing_data_description_dict = data_description.dict()
-        existing_version = existing_data_description_dict.get("schema_version")
-        if existing_version is not None and parse(existing_version) < parse("0.4.0"):
-            print(f"Fixing fields for schema version {existing_version}")
-            existing_data_description_dict["institution"] = dd.Institution(
-                existing_data_description_dict["institution"]
-            )
-            existing_data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        else:
-            existing_data_description_dict["institution"] = dd.Institution(
-                existing_data_description_dict["institution"]["abbreviation"]
-            )
-        skip_keys = [
-            "schema_version",
-            "version",
-            "data_level",
-            "described_by",
-            "ror_id",
-            "creation_time",
-            "creation_date",
-        ]
-        for key in skip_keys:
-            if key in existing_data_description_dict:
-                del existing_data_description_dict[key]
-        data_description_dict.update(existing_data_description_dict)
-        data_description_dict["input_data_name"] = existing_data_description_dict["name"]
-
-    derived_data_description = dd.DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
+    # derived data schema
+    process_name = "Spike Sorting"
+    if has_data_description:
+        derived_data_description = dd.DerivedDataDescription.from_data_description_file(
+            data_description_file=session / "data_description.json",
+            process_name=process_name,
+        )
+    else:
+        derived_data_description = dd.DerivedDataDescription.from_scratch(
+            process_name=process_name,
+            input_data_name=session_name,
+            subject_id=subject_id,
+            modality=[dd.Modality.ECEPHYS],
+            experiment_type=dd.ExperimentType.ECEPHYS,
+        )
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
