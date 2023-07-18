@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -11,6 +12,7 @@ import json
 import sys
 import time
 from datetime import datetime, timedelta
+from packaging.version import parse
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -29,12 +31,12 @@ from spikeinterface.sortingcomponents.peak_pipeline import ExtractDenseWaveforms
 from spikeinterface.sortingcomponents.peak_detection import detect_peaks
 from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
 import sortingview.views as vv
-from wavpack_numcodecs import WavPack
 
 
 # AIND
-from aind_data_schema import Processing
-from aind_data_schema.processing import DataProcess
+import aind_data_schema.data_description as dd
+from aind_data_schema.processing import DataProcess, Processing
+from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 
 # LOCAL
 from version import version as __version__
@@ -42,7 +44,7 @@ from version import version as __version__
 matplotlib.use("agg")
 
 GH_CURATION_REPO = "gh://AllenNeuralDynamics/ephys-sorting-manual-curation/main"
-PIPELINE_URL="https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
+PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
 
 # Retrieve pipeline version
 PIPELINE_VERSION = __version__
@@ -52,135 +54,134 @@ n_jobs = os.cpu_count()
 job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
 
 preprocessing_params = dict(
-        preprocessing_strategy="cmr", # 'destripe' or 'cmr'
-        highpass_filter=dict(freq_min=300.0,
-                             margin_ms=5.0),
-        phase_shift=dict(margin_ms=100.),
-        detect_bad_channels=dict(method="coherence+psd",
-                                 dead_channel_threshold=-0.5,
-                                 noisy_channel_threshold=1.,
-                                 outside_channel_threshold=-0.3,
-                                 n_neighbors=11,
-                                 seed=0),
-        remove_out_channels=True,
-        remove_bad_channels=True,
-        max_bad_channel_fraction_to_remove=0.5, 
-        common_reference=dict(reference='global',
-                              operator='median'),
-        highpass_spatial_filter=dict(n_channel_pad=60, 
-                                     n_channel_taper=None, 
-                                     direction="y",
-                                     apply_agc=True, 
-                                     agc_window_length_s=0.01, 
-                                     highpass_butter_order=3,
-                                     highpass_butter_wn=0.01)
-    )
+    preprocessing_strategy="cmr",  # 'destripe' or 'cmr'
+    highpass_filter=dict(freq_min=300.0, margin_ms=5.0),
+    phase_shift=dict(margin_ms=100.0),
+    detect_bad_channels=dict(
+        method="coherence+psd",
+        dead_channel_threshold=-0.5,
+        noisy_channel_threshold=1.0,
+        outside_channel_threshold=-0.3,
+        n_neighbors=11,
+        seed=0,
+    ),
+    remove_out_channels=True,
+    remove_bad_channels=True,
+    max_bad_channel_fraction_to_remove=0.5,
+    common_reference=dict(reference="global", operator="median"),
+    highpass_spatial_filter=dict(
+        n_channel_pad=60,
+        n_channel_taper=None,
+        direction="y",
+        apply_agc=True,
+        agc_window_length_s=0.01,
+        highpass_butter_order=3,
+        highpass_butter_wn=0.01,
+    ),
+)
 
 sorter_name = "kilosort2_5"
 sorter_params = dict()
 
 qm_params = {
-    'presence_ratio': {'bin_duration_s': 60},
-    'snr':  {
-        'peak_sign': 'neg',
-        'peak_mode': 'extremum',
-        'random_chunk_kwargs_dict': None
+    "presence_ratio": {"bin_duration_s": 60},
+    "snr": {"peak_sign": "neg", "peak_mode": "extremum", "random_chunk_kwargs_dict": None},
+    "isi_violation": {"isi_threshold_ms": 1.5, "min_isi_ms": 0},
+    "rp_violation": {"refractory_period_ms": 1, "censored_period_ms": 0.0},
+    "sliding_rp_violation": {
+        "bin_size_ms": 0.25,
+        "window_size_s": 1,
+        "exclude_ref_period_below_ms": 0.5,
+        "max_ref_period_ms": 10,
+        "contamination_values": None,
     },
-    'isi_violation': {
-        'isi_threshold_ms': 1.5, 'min_isi_ms': 0
+    "amplitude_cutoff": {
+        "peak_sign": "neg",
+        "num_histogram_bins": 100,
+        "histogram_smoothing_value": 3,
+        "amplitudes_bins_min_ratio": 5,
     },
-    'rp_violation': {
-        'refractory_period_ms': 1, 'censored_period_ms': 0.0
-    },
-    'sliding_rp_violation': {
-        'bin_size_ms': 0.25,
-        'window_size_s': 1,
-        'exclude_ref_period_below_ms': 0.5,
-        'max_ref_period_ms': 10,
-        'contamination_values': None
-    },
-    'amplitude_cutoff': {
-        'peak_sign': 'neg',
-        'num_histogram_bins': 100,
-        'histogram_smoothing_value': 3,
-        'amplitudes_bins_min_ratio': 5
-    },
-    'amplitude_median': {
-        'peak_sign': 'neg'
-    },
-    'nearest_neighbor': {
-        'max_spikes': 10000, 'min_spikes': 10, 'n_neighbors': 4
-    },
-    'nn_isolation': {
-        'max_spikes': 10000,
-        'min_spikes': 10,
-        'n_neighbors': 4,
-        'n_components': 10,
-        'radius_um': 100
-    },
-    'nn_noise_overlap': {
-        'max_spikes': 10000,
-        'min_spikes': 10,
-        'n_neighbors': 4,
-        'n_components': 10,
-        'radius_um': 100
-    }
+    "amplitude_median": {"peak_sign": "neg"},
+    "nearest_neighbor": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4},
+    "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
+    "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
 }
-qm_metric_names = ['num_spikes', 'firing_rate', 'presence_ratio', 'snr',
-                   'isi_violation', 'rp_violation', 'sliding_rp_violation',
-                   'amplitude_cutoff', 'drift', 'isolation_distance',
-                   'l_ratio', 'd_prime']
+qm_metric_names = [
+    "num_spikes",
+    "firing_rate",
+    "presence_ratio",
+    "snr",
+    "isi_violation",
+    "rp_violation",
+    "sliding_rp_violation",
+    "amplitude_cutoff",
+    "drift",
+    "isolation_distance",
+    "l_ratio",
+    "d_prime",
+]
 
-sparsity_params=dict(
-    method="radius",
-    radius_um=100
-)
+sparsity_params = dict(method="radius", radius_um=100)
 
 postprocessing_params = dict(
     sparsity=sparsity_params,
-    waveforms_deduplicate=dict(ms_before=0.5,
-                               ms_after=1.5,
-                               max_spikes_per_unit=100,
-                               return_scaled=False,
-                               dtype=None,
-                               precompute_template=('average', ),
-                               use_relative_path=True,),
-    waveforms=dict(ms_before=3.0,
-                   ms_after=4.0,
-                   max_spikes_per_unit=500,
-                   return_scaled=True,
-                   dtype=None,
-                   precompute_template=('average', 'std'),
-                   use_relative_path=True,),
-    spike_amplitudes=dict(peak_sign='neg',
-                          return_scaled=True,
-                          outputs='concatenated',),
+    waveforms_deduplicate=dict(
+        ms_before=0.5,
+        ms_after=1.5,
+        max_spikes_per_unit=100,
+        return_scaled=False,
+        dtype=None,
+        precompute_template=("average",),
+        use_relative_path=True,
+    ),
+    waveforms=dict(
+        ms_before=3.0,
+        ms_after=4.0,
+        max_spikes_per_unit=500,
+        return_scaled=True,
+        dtype=None,
+        precompute_template=("average", "std"),
+        use_relative_path=True,
+    ),
+    spike_amplitudes=dict(
+        peak_sign="neg",
+        return_scaled=True,
+        outputs="concatenated",
+    ),
     similarity=dict(method="cosine_similarity"),
-    correlograms=dict(window_ms=100.0,
-                      bin_ms=2.0,),
-    isis=dict(window_ms=100.0,
-              bin_ms=5.0,),
+    correlograms=dict(
+        window_ms=100.0,
+        bin_ms=2.0,
+    ),
+    isis=dict(
+        window_ms=100.0,
+        bin_ms=5.0,
+    ),
     locations=dict(method="monopolar_triangulation"),
     template_metrics=dict(upsampling_factor=10, sparsity=None),
-    principal_components=dict(n_components=5,
-                              mode='by_channel_local',
-                              whiten=True),
+    principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
     quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
 )
 
 curation_params = dict(
-        duplicate_threshold=0.9,
-        isi_violations_ratio_threshold=0.5,
-        presence_ratio_threshold=0.8,
-        amplitude_cutoff_threshold=0.1,
-    )
+    duplicate_threshold=0.9,
+    isi_violations_ratio_threshold=0.5,
+    presence_ratio_threshold=0.8,
+    amplitude_cutoff_threshold=0.1,
+)
 
 visualization_params = dict(
     timeseries=dict(n_snippets_per_segment=2, snippet_duration_s=0.5, skip=False),
-    drift=dict(detection=dict(method='locally_exclusive', peak_sign='neg', detect_threshold=5, exclude_sweep_ms=0.1), 
-               localization=dict(ms_before=0.1, ms_after=0.3, local_radius_um=100.),
-               n_skip=30, alpha=0.15, vmin=-200, vmax=0, cmap="Greys_r",
-               figsize=(10, 10))
+    drift=dict(
+        detection=dict(method="locally_exclusive", peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
+        localization=dict(ms_before=0.1, ms_after=0.3, local_radius_um=100.0),
+        n_skip=30,
+        alpha=0.15,
+        vmin=-200,
+        vmax=0,
+        cmap="Greys_r",
+        figsize=(10, 10),
+    ),
 )
 
 data_folder = Path("../data")
@@ -204,7 +205,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) == 5:
         PREPROCESSING_STRATEGY = sys.argv[1]
-        
+
         if sys.argv[2] == "true":
             DEBUG = True
         else:
@@ -220,9 +221,11 @@ if __name__ == "__main__":
         DEBUG_DURATION = False
         CONCAT = False
 
-    assert PREPROCESSING_STRATEGY in ["cmr", "destripe"], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
+    assert PREPROCESSING_STRATEGY in [
+        "cmr",
+        "destripe",
+    ], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
     preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
-
 
     if DEBUG:
         print("DEBUG ENABLED")
@@ -240,17 +243,38 @@ if __name__ == "__main__":
     session_name = session.name
 
     # propagate existing metadata files to results
-    metadata_json_files = [p for p in session.iterdir() if p.suffix == ".json"]
+    metadata_json_files = [
+        p
+        for p in session.iterdir()
+        if p.is_file() and p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name
+    ]
     for json_file in metadata_json_files:
         shutil.copy(json_file, results_folder)
 
     if (session / "processing.json").is_file():
         with open(session / "processing.json", "r") as processing_file:
-            processing_json = json.load(processing_file)
+            processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
-        processing = Processing.construct(**processing_json)
+        processing = Processing.construct(**processing_dict)
     else:
         processing = None
+
+    if (session / "data_description.json").is_file():
+        with open(session / "data_description.json", "r") as data_description_file:
+            data_description_dict = json.load(data_description_file)
+        # Allow for parsing earlier versions of Processing files
+        data_description = dd.DataDescription.construct(**data_description_dict)
+    else:
+        data_description = None
+
+    if (session / "subject.json").is_file():
+        with open(session / "subject.json", "r") as subject_file:
+            subject_info = json.load(subject_file)
+        subject_id = subject_info["subject_id"]
+    elif len(session_name.split("_")) > 1:
+        subject_id = session_name.split("_")[1]
+    else:
+        subject_id = "000000"  # unknown
 
     ecephys_full_folder = session / "ecephys"
     ecephys_compressed_folder = session / "ecephys_compressed"
@@ -276,7 +300,6 @@ if __name__ == "__main__":
     print(f"Global job kwargs: {si.get_global_job_kwargs()}")
     print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
 
-
     ####### PREPROCESSING #######
     print("\n\nPREPROCESSING")
     preprocessed_output_folder = tmp_folder / "preprocessed"
@@ -290,7 +313,7 @@ if __name__ == "__main__":
     for block_index in range(num_blocks):
         for stream_name in stream_names:
             # skip NIDAQ and NP1-LFP streams
-            if "NI-DAQ" not in stream_name and "LFP" not in stream_name:
+            if "NI-DAQ" not in stream_name and "LFP" not in stream_name and "Rhythm" not in stream_name:
                 experiment_name = experiment_names[block_index]
                 exp_stream_name = f"{experiment_name}_{stream_name}"
 
@@ -303,7 +326,9 @@ if __name__ == "__main__":
                     recording_list = []
                     for segment_index in range(recording.get_num_segments()):
                         recording_one = si.split_recording(recording)[segment_index]
-                        recording_one = recording_one.frame_slice(start_frame=0, end_frame=int(DEBUG_DURATION*recording.sampling_frequency))
+                        recording_one = recording_one.frame_slice(
+                            start_frame=0, end_frame=int(DEBUG_DURATION * recording.sampling_frequency)
+                        )
                         recording_list.append(recording_one)
                     recording = si.append_recordings(recording_list)
 
@@ -325,20 +350,24 @@ if __name__ == "__main__":
 
                     recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
 
-                    recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
+                    recording_hp_full = spre.highpass_filter(
+                        recording_ps_full, **preprocessing_params["highpass_filter"]
+                    )
                     preprocessing_vizualization_data[recording_name]["timeseries"]["full"] = dict(
-                                                                    raw=recording, 
-                                                                    phase_shift=recording_ps_full,
-                                                                    highpass=recording_hp_full
-                                                                )
+                        raw=recording, phase_shift=recording_ps_full, highpass=recording_hp_full
+                    )
 
                     # IBL bad channel detection
-                    _, channel_labels = spre.detect_bad_channels(recording_hp_full, **preprocessing_params["detect_bad_channels"])
+                    _, channel_labels = spre.detect_bad_channels(
+                        recording_hp_full, **preprocessing_params["detect_bad_channels"]
+                    )
                     dead_channel_mask = channel_labels == "dead"
                     noise_channel_mask = channel_labels == "noise"
                     out_channel_mask = channel_labels == "out"
                     print(f"\tBad channel detection:")
-                    print(f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}")
+                    print(
+                        f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}"
+                    )
                     dead_channel_ids = recording_hp_full.channel_ids[dead_channel_mask]
                     noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
                     out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
@@ -347,10 +376,16 @@ if __name__ == "__main__":
 
                     skip_processing = False
                     max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-                    if len(all_bad_channel_ids) >= int(max_bad_channel_fraction_to_remove * recording.get_num_channels()):
-                        print(f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
-                              f"Skipping further processing for this recording.")            
-                        preprocessing_notes += f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
+                    if len(all_bad_channel_ids) >= int(
+                        max_bad_channel_fraction_to_remove * recording.get_num_channels()
+                    ):
+                        print(
+                            f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
+                            f"Skipping further processing for this recording."
+                        )
+                        preprocessing_notes += (
+                            f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
+                        )
                         skip_processing = True
                         # in this case, processed timeseries will not be visualized
                         preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = None
@@ -359,20 +394,26 @@ if __name__ == "__main__":
                         if preprocessing_params["remove_out_channels"]:
                             print(f"\tRemoving {len(out_channel_ids)} out channels")
                             recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                            preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
+                            preprocessing_notes += (
+                                f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
+                            )
                         else:
                             recording_rm_out = recording_hp_full
 
-                        recording_processed_cmr = spre.common_reference(recording_rm_out, **preprocessing_params["common_reference"])
+                        recording_processed_cmr = spre.common_reference(
+                            recording_rm_out, **preprocessing_params["common_reference"]
+                        )
 
                         bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
                         recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
-                        recording_hp_spatial = spre.highpass_spatial_filter(recording_interp, **preprocessing_params["highpass_spatial_filter"])
+                        recording_hp_spatial = spre.highpass_spatial_filter(
+                            recording_interp, **preprocessing_params["highpass_spatial_filter"]
+                        )
                         preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
-                                                                        highpass=recording_rm_out,
-                                                                        cmr=recording_processed_cmr,
-                                                                        highpass_spatial=recording_hp_spatial
-                                                                    )
+                            highpass=recording_rm_out,
+                            cmr=recording_processed_cmr,
+                            highpass_spatial=recording_hp_spatial,
+                        )
 
                         preproc_strategy = preprocessing_params["preprocessing_strategy"]
                         if preproc_strategy == "cmr":
@@ -383,32 +424,31 @@ if __name__ == "__main__":
                         if preprocessing_params["remove_bad_channels"]:
                             print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
                             recording_processed = recording_processed.remove_channels(bad_channel_ids)
-                            preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                            preprocessing_notes += (
+                                f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                            )
                         recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
                         recording_drift = recording_saved
 
                     # store recording for drift visualization
-                    preprocessing_vizualization_data[recording_name]["drift"] = dict(
-                                                            recording=recording_drift
-                                                        )
+                    preprocessing_vizualization_data[recording_name]["drift"] = dict(recording=recording_drift)
 
     t_preprocessing_end = time.perf_counter()
     elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
 
     # save params in output
     preprocessing_process = DataProcess(
-            name="Ephys preprocessing",
-            version=PIPELINE_VERSION, # either release or git commit
-            start_date_time=datetime_start_preproc,
-            end_date_time=datetime_start_preproc + timedelta(seconds=np.floor(elapsed_time_preprocessing)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=PIPELINE_URL,
-            parameters=preprocessing_params,
-            notes=preprocessing_notes
-        )
+        name="Ephys preprocessing",
+        version=PIPELINE_VERSION,  # either release or git commit
+        start_date_time=datetime_start_preproc,
+        end_date_time=datetime_start_preproc + timedelta(seconds=np.floor(elapsed_time_preprocessing)),
+        input_location=str(data_folder),
+        output_location=str(results_folder),
+        code_url=PIPELINE_URL,
+        parameters=preprocessing_params,
+        notes=preprocessing_notes,
+    )
     print(f"PREPROCESSING time: {elapsed_time_preprocessing}s")
-
 
     ####### SPIKESORTING ########
     print("\n\nSPIKE SORTING")
@@ -433,7 +473,7 @@ if __name__ == "__main__":
         print(f"Sorting recording: {recording_name}")
         recording = si.load_extractor(recording_folder)
         print(recording)
-        
+
         # we need to concatenate segments for KS
         if CONCAT:
             if recording.get_num_segments() > 1:
@@ -441,8 +481,14 @@ if __name__ == "__main__":
 
         # run ks2.5
         try:
-            sorting = ss.run_sorter(sorter_name, recording, output_folder=spikesorted_raw_output_folder / recording_name,
-                                    verbose=False, delete_output_folder=True, **sorter_params)
+            sorting = ss.run_sorter(
+                sorter_name,
+                recording,
+                output_folder=spikesorted_raw_output_folder / recording_name,
+                verbose=False,
+                delete_output_folder=True,
+                **sorter_params,
+            )
         except Exception as e:
             # save log to results
             sorting_output_folder.mkdir()
@@ -458,34 +504,32 @@ if __name__ == "__main__":
         sorting = sc.remove_excess_spikes(sorting=sorting, recording=recording)
         print(f"\tSorting output without empty units: {sorting}")
         spikesorting_notes += f"{len(sorting.unit_ids)} after removing empty templates.\n"
-        
+
         if CONCAT:
             # split back to get original segments
             if recording.get_num_segments() > 1:
                 sorting = si.split_sorting(sorting, recording)
 
-        # save results 
+        # save results
         print(f"\tSaving results to {sorting_output_folder}")
         sorting = sorting.save(folder=sorting_output_folder)
-    
 
     t_sorting_end = time.perf_counter()
     elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
 
     # save params in output
     spikesorting_process = DataProcess(
-            name="Spike sorting",
-            version=PIPELINE_VERSION, # either release or git commit
-            start_date_time=datetime_start_sorting,
-            end_date_time=datetime_start_sorting + timedelta(seconds=np.floor(elapsed_time_sorting)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=PIPELINE_URL,
-            parameters=sorting_params,
-            notes=spikesorting_notes
-        )
+        name="Spike sorting",
+        version=PIPELINE_VERSION,  # either release or git commit
+        start_date_time=datetime_start_sorting,
+        end_date_time=datetime_start_sorting + timedelta(seconds=np.floor(elapsed_time_sorting)),
+        input_location=str(data_folder),
+        output_location=str(results_folder),
+        code_url=PIPELINE_URL,
+        parameters=sorting_params,
+        notes=spikesorting_notes,
+    )
     print(f"SPIKE SORTING time: {elapsed_time_sorting}s")
-
 
     ###### POSTPROCESSING ########
     print("\n\nPOSTPROCESSING")
@@ -513,17 +557,24 @@ if __name__ == "__main__":
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
-        we_raw = si.extract_waveforms(recording, sorting, folder=wf_dedup_folder,
-                                      **postprocessing_params["waveforms_deduplicate"])
+        we_raw = si.extract_waveforms(
+            recording, sorting, folder=wf_dedup_folder, **postprocessing_params["waveforms_deduplicate"]
+        )
         # de-duplication
-        sorting_deduplicated = sc.remove_redundant_units(we_raw, duplicate_threshold=curation_params["duplicate_threshold"])
-        print(f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}")
+        sorting_deduplicated = sc.remove_redundant_units(
+            we_raw, duplicate_threshold=curation_params["duplicate_threshold"]
+        )
+        print(
+            f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
+        )
         postprocessing_notes += f"{recording_name}:\n- Removed {len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids)} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
         # use existing deduplicated waveforms to compute sparsity
         sparsity_raw = si.compute_sparsity(we_raw, **sparsity_params)
         sparsity_mask = sparsity_raw.mask[sorting.ids_to_indices(deduplicated_unit_ids), :]
-        sparsity = si.ChannelSparsity(mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids)
+        sparsity = si.ChannelSparsity(
+            mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids
+        )
         shutil.rmtree(wf_dedup_folder)
         del we_raw
 
@@ -531,9 +582,15 @@ if __name__ == "__main__":
 
         # now extract waveforms on de-duplicated units
         print(f"\tSaving sparse de-duplicated waveform extractor folder")
-        we = si.extract_waveforms(recording, sorting_deduplicated, 
-                                  folder=wf_sparse_folder, sparsity=sparsity, sparse=True,
-                                  overwrite=True, **postprocessing_params["waveforms"])
+        we = si.extract_waveforms(
+            recording,
+            sorting_deduplicated,
+            folder=wf_sparse_folder,
+            sparsity=sparsity,
+            sparse=True,
+            overwrite=True,
+            **postprocessing_params["waveforms"],
+        )
         print("\tComputing spike amplitides")
         amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
         print("\tComputing unit locations")
@@ -558,18 +615,17 @@ if __name__ == "__main__":
 
     # save params in output
     postprocessing_process = DataProcess(
-            name="Ephys postprocessing",
-            version=PIPELINE_VERSION, # either release or git commit
-            start_date_time=datetime_start_postprocessing,
-            end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=PIPELINE_URL,
-            parameters=postprocessing_params,
-            notes=postprocessing_notes
-        )
+        name="Ephys postprocessing",
+        version=PIPELINE_VERSION,  # either release or git commit
+        start_date_time=datetime_start_postprocessing,
+        end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
+        input_location=str(data_folder),
+        output_location=str(results_folder),
+        code_url=PIPELINE_URL,
+        parameters=postprocessing_params,
+        notes=postprocessing_notes,
+    )
     print(f"POSTPROCESSING time: {elapsed_time_postprocessing}s")
-
 
     ###### CURATION ##############
     print("\n\nCURATION")
@@ -610,23 +666,25 @@ if __name__ == "__main__":
         sorting_precurated = we.sorting
         sorting_precurated.set_property("default_qc", qc_quality)
         sorting_precurated.save(folder=results_folder / "sorting_precurated" / recording_name)
-        curation_notes += f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
+        curation_notes += (
+            f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
+        )
 
     t_curation_end = time.perf_counter()
     elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
 
     # save params in output
     curation_process = DataProcess(
-            name="Ephys curation",
-            version=PIPELINE_VERSION, # either release or git commit
-            start_date_time=datetime_start_curation,
-            end_date_time=datetime_start_curation + timedelta(seconds=np.floor(elapsed_time_curation)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=PIPELINE_URL,
-            parameters=curation_params,
-            notes=curation_notes
-        )
+        name="Ephys curation",
+        version=PIPELINE_VERSION,  # either release or git commit
+        start_date_time=datetime_start_curation,
+        end_date_time=datetime_start_curation + timedelta(seconds=np.floor(elapsed_time_curation)),
+        input_location=str(data_folder),
+        output_location=str(results_folder),
+        code_url=PIPELINE_URL,
+        parameters=curation_params,
+        notes=curation_notes,
+    )
     print(f"CURATION time: {elapsed_time_curation}s")
 
     ###### VISUALIZATION #########
@@ -643,13 +701,15 @@ if __name__ == "__main__":
             print(f"\tSkipping sorting visualization for recording: {recording_name}")
             continue
         print(f"Visualizing recording: {recording_name}")
-        
+
         if recording_name not in visualization_output:
             visualization_output[recording_name] = {}
 
         # drift
         cmap = plt.get_cmap(visualization_params["drift"]["cmap"])
-        norm = Normalize(vmin=visualization_params["drift"]["vmin"], vmax=visualization_params["drift"]["vmax"], clip=True)
+        norm = Normalize(
+            vmin=visualization_params["drift"]["vmin"], vmax=visualization_params["drift"]["vmax"], clip=True
+        )
         n_skip = visualization_params["drift"]["n_skip"]
         alpha = visualization_params["drift"]["alpha"]
 
@@ -667,28 +727,34 @@ if __name__ == "__main__":
             # locally_exclusive + pipeline steps LocalizeCenterOfMass + PeakToPeakFeature
             drift_data = preprocessing_vizualization_data[recording_name]["drift"]
             recording = drift_data["recording"]
-            extract_dense_waveforms = ExtractDenseWaveforms(recording, ms_before=visualization_params["drift"]["localization"]["ms_before"],
-                                                            ms_after=visualization_params["drift"]["localization"]["ms_after"], return_output=False)
-            localize_peaks = LocalizeCenterOfMass(recording, local_radius_um=visualization_params["drift"]["localization"]["local_radius_um"], 
-                                                  parents=[extract_dense_waveforms])
-            pipeline_nodes = [
-                extract_dense_waveforms,
-                localize_peaks
-            ]
-            peaks, peak_locations = detect_peaks(recording,
-                                                 pipeline_nodes=pipeline_nodes,
-                                                 **visualization_params["drift"]["detection"])
+            extract_dense_waveforms = ExtractDenseWaveforms(
+                recording,
+                ms_before=visualization_params["drift"]["localization"]["ms_before"],
+                ms_after=visualization_params["drift"]["localization"]["ms_after"],
+                return_output=False,
+            )
+            localize_peaks = LocalizeCenterOfMass(
+                recording,
+                local_radius_um=visualization_params["drift"]["localization"]["local_radius_um"],
+                parents=[extract_dense_waveforms],
+            )
+            pipeline_nodes = [extract_dense_waveforms, localize_peaks]
+            peaks, peak_locations = detect_peaks(
+                recording, pipeline_nodes=pipeline_nodes, **visualization_params["drift"]["detection"]
+            )
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
         y_locs = recording.get_channel_locations()[:, 1]
         ylim = [np.min(y_locs), np.max(y_locs)]
 
-        fig_drift, axs_drift = plt.subplots(ncols=recording.get_num_segments(), figsize=visualization_params["drift"]["figsize"])
+        fig_drift, axs_drift = plt.subplots(
+            ncols=recording.get_num_segments(), figsize=visualization_params["drift"]["figsize"]
+        )
         for segment_index in range(recording.get_num_segments()):
-            segment_mask = peaks["segment_ind"] == segment_index
-            x = peaks[segment_mask]['sample_ind'] / recording.sampling_frequency
-            y = peak_locations[segment_mask]['y']
+            segment_mask = peaks["segment_index"] == segment_index
+            x = peaks[segment_mask]["sample_index"] / recording.sampling_frequency
+            y = peak_locations[segment_mask]["y"]
             # subsample
             x_sub = x[::n_skip]
             y_sub = y[::n_skip]
@@ -712,8 +778,7 @@ if __name__ == "__main__":
 
         # make a sorting view View
         v_drift = vv.TabLayoutItem(
-            label=f"Drift map",
-            view=vv.Image(image_path=str(fig_drift_folder / f"{recording_name}_drift.png"))
+            label=f"Drift map", view=vv.Image(image_path=str(fig_drift_folder / f"{recording_name}_drift.png"))
         )
 
         # timeseries
@@ -748,30 +813,43 @@ if __name__ == "__main__":
                     # evenly distribute t_starts across segments
                     t_starts = np.linspace(0, segment_duration, n_snippets_per_seg + 2)[1:-1]
                     for t_start in t_starts:
-                        time_range = np.round(np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]), 1)
-                        w_full = sw.plot_timeseries(recording_full_dict, order_channel_by_depth=True, time_range=time_range, 
-                                                    segment_index=segment_index, clim=clims_full, backend="sortingview", generate_url=False)
+                        time_range = np.round(
+                            np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]), 1
+                        )
+                        w_full = sw.plot_timeseries(
+                            recording_full_dict,
+                            order_channel_by_depth=True,
+                            time_range=time_range,
+                            segment_index=segment_index,
+                            clim=clims_full,
+                            backend="sortingview",
+                            generate_url=False,
+                        )
                         if recording_proc_dict is not None:
-                            w_proc = sw.plot_timeseries(recording_proc_dict, order_channel_by_depth=True, time_range=time_range, 
-                                                        segment_index=segment_index, clim=clims_proc, backend="sortingview", generate_url=False)
+                            w_proc = sw.plot_timeseries(
+                                recording_proc_dict,
+                                order_channel_by_depth=True,
+                                time_range=time_range,
+                                segment_index=segment_index,
+                                clim=clims_proc,
+                                backend="sortingview",
+                                generate_url=False,
+                            )
                             view = vv.Splitter(
-                                        direction='horizontal',
-                                        item1=vv.LayoutItem(w_full.view),
-                                        item2=vv.LayoutItem(w_proc.view)
-                                    )
+                                direction="horizontal",
+                                item1=vv.LayoutItem(w_full.view),
+                                item2=vv.LayoutItem(w_proc.view),
+                            )
                         else:
                             view = w_full.view
                         v_item = vv.TabLayoutItem(
-                            label=f"Timeseries - Segment {segment_index} - Time: {time_range}",
-                            view=view
+                            label=f"Timeseries - Segment {segment_index} - Time: {time_range}", view=view
                         )
                         timeseries_tab_items.append(v_item)
                 # add drift map
                 timeseries_tab_items.append(v_drift)
 
-                v_timeseries = vv.TabLayout(
-                    items=timeseries_tab_items
-                )
+                v_timeseries = vv.TabLayout(items=timeseries_tab_items)
                 try:
                     url = v_timeseries.url(label=f"{session_name} - {recording_name}")
                     print(f"\n{url}\n")
@@ -781,39 +859,40 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Something wrong when visualizing timeseries: {e}")
 
-        # sorting summary        
-        print(f"\tVisualizing sorting summary")        
+        # sorting summary
+        print(f"\tVisualizing sorting summary")
         we = si.load_waveforms(recording_folder)
         sorting_precurated = si.load_extractor(results_folder / "sorting_precurated" / recording_name)
         # set waveform_extractor sorting object to have pass_qc property
         we.sorting = sorting_precurated
 
-        
         if len(we.sorting.unit_ids) > 0:
             # tab layout with Summary and Quality Metrics
-            v_qm = sw.plot_quality_metrics(we, skip_metrics=['isi_violations_count', 'rp_violations'], 
-                                           include_metrics_data=True, backend="sortingview", generate_url=False).view
-            v_sorting = sw.plot_sorting_summary(we, unit_table_properties=["default_qc"], curation=True, 
-                                                backend="sortingview", generate_url=False).view
+            v_qm = sw.plot_quality_metrics(
+                we,
+                skip_metrics=["isi_violations_count", "rp_violations"],
+                include_metrics_data=True,
+                backend="sortingview",
+                generate_url=False,
+            ).view
+            v_sorting = sw.plot_sorting_summary(
+                we, unit_table_properties=["default_qc"], curation=True, backend="sortingview", generate_url=False
+            ).view
 
             v_summary = vv.TabLayout(
-                    items=[
-                        vv.TabLayoutItem(
-                            label='Sorting summary',
-                            view=v_sorting
-                        ),
-                        vv.TabLayoutItem(
-                            label='Quality Metrics',
-                            view=v_qm
-                        )
-                    ]
-                )
+                items=[
+                    vv.TabLayoutItem(label="Sorting summary", view=v_sorting),
+                    vv.TabLayoutItem(label="Quality Metrics", view=v_qm),
+                ]
+            )
 
             try:
                 # pre-generate gh for curation
                 gh_path = f"{GH_CURATION_REPO}/{session_name}/{recording_name}/{sorter_name}/curation.json"
                 state = dict(sortingCuration=gh_path)
-                url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary", state=state)
+                url = v_summary.url(
+                    label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary", state=state
+                )
                 print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 
@@ -826,7 +905,7 @@ if __name__ == "__main__":
     visualization_notes = json.dumps(visualization_output, indent=4)
     # replace special characters
     visualization_notes = visualization_notes.replace('\\"', "%22")
-    visualization_notes = visualization_notes.replace('#', "%23")
+    visualization_notes = visualization_notes.replace("#", "%23")
 
     # save vizualization output
     visualization_output_file = results_folder / "visualization_output.json"
@@ -838,32 +917,29 @@ if __name__ == "__main__":
     elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
 
     visualization_process = DataProcess(
-            name="Ephys visualization",
-            version=PIPELINE_VERSION, # either release or git commit
-            start_date_time=datetime_start_visualization,
-            end_date_time=datetime_start_visualization + timedelta(seconds=np.floor(elapsed_time_visualization)),
-            input_location=str(data_folder),
-            output_location=str(results_folder),
-            code_url=PIPELINE_URL,
-            parameters=visualization_params,
-            notes=visualization_notes
-        )
+        name="Ephys visualization",
+        version=PIPELINE_VERSION,  # either release or git commit
+        start_date_time=datetime_start_visualization,
+        end_date_time=datetime_start_visualization + timedelta(seconds=np.floor(elapsed_time_visualization)),
+        input_location=str(data_folder),
+        output_location=str(results_folder),
+        code_url=PIPELINE_URL,
+        parameters=visualization_params,
+        notes=visualization_notes,
+    )
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
-
 
     # construct processing.json
     ephys_data_processes = [
-            preprocessing_process,
-            spikesorting_process,
-            postprocessing_process,
-            curation_process,
-            visualization_process
-        ]
+        preprocessing_process,
+        spikesorting_process,
+        postprocessing_process,
+        curation_process,
+        visualization_process,
+    ]
     ephys_processing = Processing(
-            pipeline_url=PIPELINE_URL,
-            pipeline_version=PIPELINE_VERSION,
-            data_processes=ephys_data_processes
-        )
+        pipeline_url=PIPELINE_URL, pipeline_version=PIPELINE_VERSION, data_processes=ephys_data_processes
+    )
 
     if processing is None:
         processing = ephys_processing
@@ -873,6 +949,33 @@ if __name__ == "__main__":
     # save processing files to output
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
+
+    process_name = "Spike Sorting"
+    if data_description is not None:
+        upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
+        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
+        derived_data_description = dd.DerivedDataDescription.from_data_description(
+            upgraded_data_description, process_name=process_name
+        )
+    else:
+        now = datetime.now()
+        # make from scratch:
+        data_description_dict = {}
+        data_description_dict["creation_time"] = now.time()
+        data_description_dict["creation_date"] = now.date()
+        data_description_dict["input_data_name"] = session_name
+        data_description_dict["institution"] = dd.Institution.AIND
+        data_description_dict["investigators"] = []
+        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
+        data_description_dict["modality"] = [dd.Modality.ECEPHYS]
+        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+        data_description_dict["subject_id"] = subject_id
+
+        derived_data_description = dd.DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
+
+    # save processing files to output
+    with (results_folder / "data_description.json").open("w") as f:
+        f.write(derived_data_description.json(indent=3))
 
     # remove tmp_folder
     shutil.rmtree(tmp_folder)
