@@ -21,7 +21,7 @@ RUN pip install -U --no-cache-dir --ignore-installed \
     cryptography==37.0.4 \
     wavpack-numcodecs==0.1.3 \
     numba==0.56.4 \
-    aind-data-schema==0.13.51
+    aind-data-schema==0.13.66
 
 COPY postInstall /
 RUN /postInstall
