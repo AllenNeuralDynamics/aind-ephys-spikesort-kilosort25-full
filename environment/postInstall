@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# install spikeinterface extras
-pip install --no-cache-dir --ignore-installed spikeinterface[full,widgets]==0.98.0
-
-# install aind-data-schema from source
-git clone https://github.com/AllenNeuralDynamics/aind-data-schema.git
-cd aind-data-schema
-git checkout f5d3f3ee31bf59077b16fd17211104708055e3f6
-pip install --no-cache-dir --ignore-installed .
-cd ..
+# install spikeinterface
+pip install --no-cache-dir --ignore-installed spikeinterface[full,widgets]==0.98.1
 
 
 # pin setuptools to remove warnings

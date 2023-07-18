@@ -36,7 +36,7 @@ import sortingview.views as vv
 # AIND
 import aind_data_schema.data_description as dd
 from aind_data_schema.processing import DataProcess, Processing
-
+from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 
 # LOCAL
 from version import version as __version__
@@ -253,16 +253,19 @@ if __name__ == "__main__":
 
     if (session / "processing.json").is_file():
         with open(session / "processing.json", "r") as processing_file:
-            processing_json = json.load(processing_file)
+            processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
-        processing = Processing.construct(**processing_json)
+        processing = Processing.construct(**processing_dict)
     else:
         processing = None
 
     if (session / "data_description.json").is_file():
-        has_data_description = True
+        with open(session / "data_description.json", "r") as data_description_file:
+            data_description_dict = json.load(data_description_file)
+        # Allow for parsing earlier versions of Processing files
+        data_description = dd.DataDescription.construct(**data_description_dict)
     else:
-        has_data_description = False
+        data_description = None
 
     if (session / "subject.json").is_file():
         with open(session / "subject.json", "r") as subject_file:
@@ -947,21 +950,28 @@ if __name__ == "__main__":
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
 
-    # derived data schema
     process_name = "Spike Sorting"
-    if has_data_description:
-        derived_data_description = dd.DerivedDataDescription.from_data_description_file(
-            data_description_file=session / "data_description.json",
-            process_name=process_name,
+    if data_description is not None:
+        upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
+        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
+        derived_data_description = dd.DerivedDataDescription.from_data_description(
+            upgraded_data_description, process_name=process_name
         )
     else:
-        derived_data_description = dd.DerivedDataDescription.from_scratch(
-            process_name=process_name,
-            input_data_name=session_name,
-            subject_id=subject_id,
-            modality=[dd.Modality.ECEPHYS],
-            experiment_type=dd.ExperimentType.ECEPHYS,
-        )
+        now = datetime.now()
+        # make from scratch:
+        data_description_dict = {}
+        data_description_dict["creation_time"] = now.time()
+        data_description_dict["creation_date"] = now.date()
+        data_description_dict["input_data_name"] = session_name
+        data_description_dict["institution"] = dd.Institution.AIND
+        data_description_dict["investigators"] = []
+        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
+        data_description_dict["modality"] = [dd.Modality.ECEPHYS]
+        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+        data_description_dict["subject_id"] = subject_id
+
+        derived_data_description = dd.DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
