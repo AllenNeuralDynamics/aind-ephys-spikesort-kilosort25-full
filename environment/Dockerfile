@@ -14,9 +14,6 @@ RUN pip install -U --no-cache-dir --ignore-installed jupyter
 # needed for correct functioning of sortingview
 RUN pip install -U --no-cache-dir --ignore-installed \
     pyvips==2.2.1 \
-    cryptography==37.0.4 \
-    numba==0.56.4 \
-    pynwb
+    pynwb==2.4.0 \
+    spikeinterface[full,widgets]==0.98.2
 
-COPY postInstall /
-RUN /postInstall

@@ -10,7 +10,7 @@ The pipeline includes:
 - curation based on ISI violation ratio, presence ratio, and amplitude cutoff
 - visualization of timeseries, drift maps, and sorting output in sortingview
 
-## How to run it?
+## How to run it on CodeOcean?
 
 The `environment` folder contains a `Dockerfile` to build the container with all required packages.
 
@@ -22,6 +22,9 @@ The script assumes that the data in the `data` folder is organized as follows:
 - the "session" folder contains either:
   - the `ecephys` folder, with a valid `Open Ephys` folder
   - the `ecephys_compressed` and the `ecephys_clipped` folders, created by the [openephys_job](https://github.com/AllenNeuralDynamics/aind-data-transfer/blob/main/src/aind_data_transfer/jobs/openephys_job.py) script in the [aind-data-transfer](https://github.com/AllenNeuralDynamics/aind-data-transfer) repo.
+
+For instructions for local deployment, refer to the **Local Deployment** section at the end of the page.
+
 
 ## Input parameters
 
@@ -54,7 +57,7 @@ The processing pipeline assumes that [FigURL](https://github.com/flatironinstitu
 If you are planning to use this pipeline extensively, please consider providing your own cloud resources (see [Create Kachery Zone](https://github.com/flatironinstitute/kachery-cloud/blob/main/doc/create_kachery_zone.md))
 
 
-# Local deployment changes
+# Local deployment
 
 This pipeline is currently tailored to be run on Code Ocean. 
 However, it should be relatively simple to run it locally (or on other computational resources).
@@ -64,9 +67,17 @@ In particular, the `code/run_capsule_spikeglx.py` is a modified version designed
 The `code/run_capsule_nwb.py` is designed to run on an NWB file.
 
 
-## How to deploy locally
+## How to run locally
 
-From the `local-deployment` branch, first we need to build the docker image:
+First, let's clone the repo and checkout the `local-deployment` branch:
+
+```bash
+git clone https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full
+cd aind-capsule-ephys-spikesort-kilosort25-full
+git checkout local-deployment
+```
+
+Next, first we need to build the docker image:
 
 ```bash
 cd environment
@@ -103,7 +114,7 @@ FROM spikeinterface/kilosort2_5-compiled-base:latest
 ### 2. Reading of the data
 
 The first part of the `code/run_capsule.py` script is dealing with loading the data. This part is clearly 
-tailored to the way we store the data at AIND (see [this section]()).
+tailored to the way we store the data at AIND (see [this section](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full/blob/84eab15e52d2ae24d2035b97e42d593c6cbfac52/code/run_capsule.py#L240-L286)).
 In the `local-deployment` branch, we included two extra `run_capsule_*` scripts, one for SpikeGLX and one for 
 NWB data.
 
