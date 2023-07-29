@@ -70,12 +70,13 @@ From the `local-deployment` branch, first we need to build the docker image:
 
 ```bash
 cd environment
-docker built -t ephys-pipeline-container:latest .
+docker build -t ephys-pipeline-container:latest .
 ```
 
 Next, we need to move the dataset to analyze in the `data` folder. For example:
 
 ```bash
+mkdir data
 cp -r $HOME/data/my-spike-glx-dset data
 ```
 
