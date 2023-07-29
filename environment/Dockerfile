@@ -19,9 +19,8 @@ RUN pip install -U --no-cache-dir --ignore-installed jupyter
 RUN pip install -U --no-cache-dir --ignore-installed \
     pyvips==2.2.1 \
     cryptography==37.0.4 \
-    wavpack-numcodecs==0.1.4 \
     numba==0.56.4 \
-    aind-data-schema==0.13.66
+    pynwb
 
 COPY postInstall /
 RUN /postInstall

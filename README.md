@@ -23,8 +23,6 @@ The script assumes that the data in the `data` folder is organized as follows:
   - the `ecephys` folder, with a valid `Open Ephys` folder
   - the `ecephys_compressed` and the `ecephys_clipped` folders, created by the [openephys_job](https://github.com/AllenNeuralDynamics/aind-data-transfer/blob/main/src/aind_data_transfer/jobs/openephys_job.py) script in the [aind-data-transfer](https://github.com/AllenNeuralDynamics/aind-data-transfer) repo.
 
-**Note** that the data loading section (L236-270) can be easily customized to use other data formats compatible with SpikeInterface.
-
 ## Input parameters
 
 The `run_capsule.py` script optionally accepts 4 arguments:
@@ -50,8 +48,70 @@ The script produces the following output files in the `results` folder:
 - `processing.json`: the processing parameter following the [aind-data-schema](https://github.com/AllenNeuralDynamics/aind-data-schema) metadata schema.
 - `visualization_output.json`: convenient file with [FigURL](https://github.com/flatironinstitute/figurl) links for cloud visualization
 
-
 ## Notes on visualization
 
 The processing pipeline assumes that [FigURL](https://github.com/flatironinstitute/figurl) is correctly set up. 
 If you are planning to use this pipeline extensively, please consider providing your own cloud resources (see [Create Kachery Zone](https://github.com/flatironinstitute/kachery-cloud/blob/main/doc/create_kachery_zone.md))
+
+
+# Local deployment changes
+
+This pipeline is currently tailored to be run on Code Ocean. 
+However, it should be relatively simple to run it locally (or on other computational resources).
+
+The `local-deployment` branch includes a already includes the required changes / placeholders.
+In particular, the `code/run_capsule_spikeglx.py` is a modified version designed to run on SpikeGLX datasets.
+The `code/run_capsule_nwb.py` is designed to run on an NWB file.
+
+
+## How to deploy locally
+
+From the `local-deployment` branch, first we need to build the docker image:
+
+```bash
+cd environment
+docker built -t ephys-pipeline-container:latest .
+```
+
+Next, we need to move the dataset to analyze in the `data` folder. For example:
+
+```bash
+cp -r $HOME/data/my-spike-glx-dset data
+```
+
+Finally, we can run the pipeline in the Docker container. We need to map the capsule to make the data available to the container:
+```bash
+chmod +x ./code/run_capsule_nwb
+docker run ephys-pipeline-container:latest -v .:/capsule /bin/bash /capsule/code/run_capsule_nwb
+```
+
+
+## List of changes for local deployment
+
+Here is a list of the key changes that are needed:
+
+### 1. Base Docker image
+
+Code Ocean uses an [internal registry of base Docker](https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full/blob/84eab15e52d2ae24d2035b97e42d593c6cbfac52/environment/Dockerfile#L2) images. To use the same pipeline locally, 
+the base Docker image in the `environment/Dockerfile` file is changed to:
+
+```Dockerfile
+FROM spikeinterface/kilosort2_5-compiled-base:latest
+```
+
+### 2. Reading of the data
+
+The first part of the `code/run_capsule.py` script is dealing with loading the data. This part is clearly 
+tailored to the way we store the data at AIND (see [this section]()).
+In the `local-deployment` branch, we included two extra `run_capsule_*` scripts, one for SpikeGLX and one for 
+NWB data.
+
+In both cases, we assume that the data folder includes a single dataset (either a SpikeGLX generated folder or 
+a single NWB file).
+
+### 3. Metadata handling
+
+At AIND, we use [aind-data-schema]() to deal with metadata. We removed all the code specific to metadata handling 
+in the custom `run_capsule_*` functions.
+
+
