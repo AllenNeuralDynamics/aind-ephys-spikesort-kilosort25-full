@@ -55,9 +55,9 @@ preprocessing_params = dict(
         n_neighbors=11,
         seed=0,
     ),
-    remove_out_channels=True,
-    remove_bad_channels=True,
-    max_bad_channel_fraction_to_remove=0.5,
+    remove_out_channels=False,
+    remove_bad_channels=False,
+    max_bad_channel_fraction_to_remove=1.1,
     common_reference=dict(reference="global", operator="median"),
     highpass_spatial_filter=dict(
         n_channel_pad=60,
@@ -178,7 +178,12 @@ data_folder = Path("../data")
 results_folder = Path("../results")
 scratch_folder = Path("../scratch")
 
+scratch_folder.mkdir(exist_ok=True)
+results_folder.mkdir(exist_ok=True)
+
 tmp_folder = results_folder / "tmp"
+if tmp_folder.is_dir():
+    shutil.rmtree(tmp_folder)
 tmp_folder.mkdir()
 
 visualization_output = {}
@@ -280,7 +285,10 @@ if __name__ == "__main__":
         print(f"Preprocessing recording: {recording_name}")
         print(f"\tDuration: {np.round(recording.get_total_duration(), 2)} s")
 
-        recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
+        if "inter_sample_shift" in recording.get_property_keys():
+            recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
+        else:
+            recording_ps_full = recording
 
         recording_hp_full = spre.highpass_filter(
             recording_ps_full, **preprocessing_params["highpass_filter"]

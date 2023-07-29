@@ -56,7 +56,7 @@ preprocessing_params = dict(
         seed=0,
     ),
     remove_out_channels=True,
-    remove_bad_channels=True,
+    remove_bad_channels=False,
     max_bad_channel_fraction_to_remove=0.5,
     common_reference=dict(reference="global", operator="median"),
     highpass_spatial_filter=dict(
@@ -178,9 +178,12 @@ data_folder = Path("../data")
 results_folder = Path("../results")
 scratch_folder = Path("../scratch")
 
-tmp_folder = results_folder / "tmp"
-tmp_folder.mkdir()
+scratch_folder.mkdir(exist_ok=True)
+results_folder.mkdir(exist_ok=True)
 
+tmp_folder = results_folder / "tmp"
+if tmp_folder.is_dir():
+    shutil.rmtree(tmp_folder)
 visualization_output = {}
 
 

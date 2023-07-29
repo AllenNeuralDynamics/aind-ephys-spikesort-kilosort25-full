@@ -82,19 +82,28 @@ Next, first we need to build the docker image:
 ```bash
 cd environment
 docker build -t ephys-pipeline-container:latest .
+cd ..
 ```
 
-Next, we need to move the dataset to analyze in the `data` folder. For example:
+Next, we need to move the dataset to analyze in the `data` folder. 
+For example, we can download an NWB file from [DANDI](https://dandiarchive.org/) (e.g. [this dataset](https://dandiarchive.org/dandiset/000028/draft/files?location=sub-mouse412804)) and 
+move it to the `data` folder:
 
 ```bash
 mkdir data
-cp -r $HOME/data/my-spike-glx-dset data
+mv path-to-download-folder/sub-mouse412804_ses-20200803T115732_ecephys.nwb data
 ```
 
-Finally, we can run the pipeline in the Docker container. We need to map the capsule to make the data available to the container:
+Finally, we can start the container:
 ```bash
-chmod +x ./code/run_capsule_nwb
-docker run ephys-pipeline-container:latest -v .:/capsule /bin/bash /capsule/code/run_capsule_nwb
+chmod +x ./code/run_nwb
+docker run -it --gpus all -v .:/capsule ephys-pipeline-container:latest 
+```
+
+and run the pipeline:
+```bash
+cd /capsule/code
+./run_nwb
 ```
 
 
