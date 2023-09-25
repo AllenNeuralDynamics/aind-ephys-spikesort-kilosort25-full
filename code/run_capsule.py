@@ -950,7 +950,7 @@ if __name__ == "__main__":
     with (results_folder / "processing.json").open("w") as f:
         f.write(processing.json(indent=3))
 
-    process_name = "Spike Sorting"
+    process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
         upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
@@ -971,7 +971,7 @@ if __name__ == "__main__":
         data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
         data_description_dict["subject_id"] = subject_id
 
-        derived_data_description = dd.DerivedDataDescription(process_name="Spike Sorting", **data_description_dict)
+        derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
