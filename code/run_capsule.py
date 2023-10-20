@@ -35,7 +35,7 @@ import sortingview.views as vv
 
 # AIND
 import aind_data_schema.data_description as dd
-from aind_data_schema.processing import DataProcess, Processing
+from aind_data_schema.processing import DataProcess, Processing, PipelineProcess
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 
 # LOCAL
@@ -45,6 +45,7 @@ matplotlib.use("agg")
 
 GH_CURATION_REPO = "gh://AllenNeuralDynamics/ephys-sorting-manual-curation/main"
 PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
+MAINTAINER = "Alessio Buccino"
 
 # Retrieve pipeline version
 PIPELINE_VERSION = __version__
@@ -189,6 +190,8 @@ results_folder = Path("../results")
 scratch_folder = Path("../scratch")
 
 tmp_folder = results_folder / "tmp"
+if tmp_folder.is_dir():
+    shutil.rmtree(tmp_folder)
 tmp_folder.mkdir()
 
 visualization_output = {}
@@ -439,7 +442,7 @@ if __name__ == "__main__":
     # save params in output
     preprocessing_process = DataProcess(
         name="Ephys preprocessing",
-        version=PIPELINE_VERSION,  # either release or git commit
+        software_version=PIPELINE_VERSION,  # either release or git commit
         start_date_time=datetime_start_preproc,
         end_date_time=datetime_start_preproc + timedelta(seconds=np.floor(elapsed_time_preprocessing)),
         input_location=str(data_folder),
@@ -520,7 +523,7 @@ if __name__ == "__main__":
     # save params in output
     spikesorting_process = DataProcess(
         name="Spike sorting",
-        version=PIPELINE_VERSION,  # either release or git commit
+        software_version=PIPELINE_VERSION,  # either release or git commit
         start_date_time=datetime_start_sorting,
         end_date_time=datetime_start_sorting + timedelta(seconds=np.floor(elapsed_time_sorting)),
         input_location=str(data_folder),
@@ -616,7 +619,7 @@ if __name__ == "__main__":
     # save params in output
     postprocessing_process = DataProcess(
         name="Ephys postprocessing",
-        version=PIPELINE_VERSION,  # either release or git commit
+        software_version=PIPELINE_VERSION,  # either release or git commit
         start_date_time=datetime_start_postprocessing,
         end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
         input_location=str(data_folder),
@@ -669,6 +672,7 @@ if __name__ == "__main__":
         curation_notes += (
             f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
         )
+        print(f"\t{np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} units passing default QC")
 
     t_curation_end = time.perf_counter()
     elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
@@ -676,7 +680,7 @@ if __name__ == "__main__":
     # save params in output
     curation_process = DataProcess(
         name="Ephys curation",
-        version=PIPELINE_VERSION,  # either release or git commit
+        software_version=PIPELINE_VERSION,  # either release or git commit
         start_date_time=datetime_start_curation,
         end_date_time=datetime_start_curation + timedelta(seconds=np.floor(elapsed_time_curation)),
         input_location=str(data_folder),
@@ -918,7 +922,7 @@ if __name__ == "__main__":
 
     visualization_process = DataProcess(
         name="Ephys visualization",
-        version=PIPELINE_VERSION,  # either release or git commit
+        software_version=PIPELINE_VERSION,  # either release or git commit
         start_date_time=datetime_start_visualization,
         end_date_time=datetime_start_visualization + timedelta(seconds=np.floor(elapsed_time_visualization)),
         input_location=str(data_folder),
@@ -937,9 +941,13 @@ if __name__ == "__main__":
         curation_process,
         visualization_process,
     ]
-    ephys_processing = Processing(
-        pipeline_url=PIPELINE_URL, pipeline_version=PIPELINE_VERSION, data_processes=ephys_data_processes
+    processing_pipeline = PipelineProcess(
+        data_processes=ephys_data_processes,
+        processor_full_name=MAINTAINER,
+        pipeline_version=PIPELINE_VERSION,
+        pipeline_url=PIPELINE_URL,
     )
+    ephys_processing = Processing(processing_pipeline=processing_pipeline)
 
     if processing is None:
         processing = ephys_processing
@@ -953,7 +961,7 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
+        upgraded_data_description = upgrader.upgrade_data_description(platform=dd.Platform.ECEPHYS)
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
@@ -968,7 +976,7 @@ if __name__ == "__main__":
         data_description_dict["investigators"] = []
         data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
         data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+        data_description_dict["platform"] = dd.Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
 
         derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
