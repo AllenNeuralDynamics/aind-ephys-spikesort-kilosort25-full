@@ -945,11 +945,9 @@ if __name__ == "__main__":
         data_processes=ephys_data_processes,
         processor_full_name=MAINTAINER,
         pipeline_version=PIPELINE_VERSION,
-        pipeline_url=PIPELINE_URL
+        pipeline_url=PIPELINE_URL,
     )
-    ephys_processing = Processing(
-        processing_pipeline=processing_pipeline
-    )
+    ephys_processing = Processing(processing_pipeline=processing_pipeline)
 
     if processing is None:
         processing = ephys_processing
