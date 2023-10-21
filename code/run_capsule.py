@@ -442,7 +442,7 @@ if __name__ == "__main__":
     # save params in output
     preprocessing_process = DataProcess(
         name=ProcessName.EPHYS_PREPROCESSING,
-        software_version=PIPELINE_VERSION,  # @alessio, seems that this is called software_version (not version) in the version of aind_data_schema that I have
+        version=PIPELINE_VERSION,
         code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_preproc,
         end_date_time=datetime_start_preproc + timedelta(seconds=np.floor(elapsed_time_preprocessing)),
@@ -535,7 +535,7 @@ if __name__ == "__main__":
     assert sorting_params is not None
     spikesorting_process = DataProcess(
         name=ProcessName.SPIKE_SORTING,
-        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        version=PIPELINE_VERSION,
         code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_sorting,
         end_date_time=datetime_start_sorting + timedelta(seconds=np.floor(elapsed_time_sorting)),
@@ -636,7 +636,7 @@ if __name__ == "__main__":
     # save params in output
     postprocessing_process = DataProcess(
         name=ProcessName.EPHYS_POSTPROCESSING,
-        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        version=PIPELINE_VERSION,
         code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_postprocessing,
         end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
@@ -698,7 +698,7 @@ if __name__ == "__main__":
     # save params in output
     curation_process = DataProcess(
         name=ProcessName.EPHYS_CURATION,
-        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        version=PIPELINE_VERSION,
         code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_curation,
         end_date_time=datetime_start_curation + timedelta(seconds=np.floor(elapsed_time_curation)),
@@ -945,7 +945,7 @@ if __name__ == "__main__":
 
     visualization_process = DataProcess(
         name=ProcessName.EPHYS_VISUALIZATION,
-        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        version=PIPELINE_VERSION,
         code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_visualization,
         end_date_time=datetime_start_visualization + timedelta(seconds=np.floor(elapsed_time_visualization)),
