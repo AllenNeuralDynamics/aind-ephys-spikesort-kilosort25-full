@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # GENERAL IMPORTS
 import os
+from typing import Dict, Any, Union, List
 import numpy as np
 from pathlib import Path
 import shutil
@@ -27,7 +28,7 @@ import spikeinterface.postprocessing as spost
 import spikeinterface.qualitymetrics as sqm
 import spikeinterface.curation as sc
 import spikeinterface.widgets as sw
-from spikeinterface.sortingcomponents.peak_pipeline import ExtractDenseWaveforms
+from spikeinterface.sortingcomponents.peak_pipeline import ExtractDenseWaveforms # type: ignore @alessio, this is not found in my version of spikeinterface
 from spikeinterface.sortingcomponents.peak_detection import detect_peaks
 from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
 import sortingview.views as vv
@@ -35,7 +36,7 @@ import sortingview.views as vv
 
 # AIND
 import aind_data_schema.data_description as dd
-from aind_data_schema.processing import DataProcess, Processing
+from aind_data_schema.processing import DataProcess, Processing, ProcessName
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 
 # LOCAL
@@ -53,7 +54,7 @@ PIPELINE_VERSION = __version__
 n_jobs = os.cpu_count()
 job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
 
-preprocessing_params = dict(
+preprocessing_params: Dict[str, Any] = dict(
     preprocessing_strategy="cmr",  # 'destripe' or 'cmr'
     highpass_filter=dict(freq_min=300.0, margin_ms=5.0),
     phase_shift=dict(margin_ms=100.0),
@@ -83,7 +84,7 @@ preprocessing_params = dict(
 sorter_name = "kilosort2_5"
 sorter_params = dict()
 
-qm_params = {
+qm_params: Dict[str, Any] = {
     "presence_ratio": {"bin_duration_s": 60},
     "snr": {"peak_sign": "neg", "peak_mode": "extremum", "random_chunk_kwargs_dict": None},
     "isi_violation": {"isi_threshold_ms": 1.5, "min_isi_ms": 0},
@@ -106,7 +107,7 @@ qm_params = {
     "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
     "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
 }
-qm_metric_names = [
+qm_metric_names: List[str] = [
     "num_spikes",
     "firing_rate",
     "presence_ratio",
@@ -121,9 +122,9 @@ qm_metric_names = [
     "d_prime",
 ]
 
-sparsity_params = dict(method="radius", radius_um=100)
+sparsity_params: Dict[str, Any] = dict(method="radius", radius_um=100)
 
-postprocessing_params = dict(
+postprocessing_params: Dict[str, Any] = dict(
     sparsity=sparsity_params,
     waveforms_deduplicate=dict(
         ms_before=0.5,
@@ -163,14 +164,14 @@ postprocessing_params = dict(
     quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
 )
 
-curation_params = dict(
+curation_params: Dict[str, Any] = dict(
     duplicate_threshold=0.9,
     isi_violations_ratio_threshold=0.5,
     presence_ratio_threshold=0.8,
     amplitude_cutoff_threshold=0.1,
 )
 
-visualization_params = dict(
+visualization_params: Dict[str, Any] = dict(
     timeseries=dict(n_snippets_per_segment=2, snippet_duration_s=0.5, skip=False),
     drift=dict(
         detection=dict(method="locally_exclusive", peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
@@ -323,6 +324,8 @@ if __name__ == "__main__":
                     recording = si.read_zarr(ecephys_compressed_folder / f"{exp_stream_name}.zarr")
 
                 if DEBUG:
+                    if DEBUG_DURATION is None:
+                        raise Exception("DEBUG_DURATION must be set if DEBUG is True")
                     recording_list = []
                     for segment_index in range(recording.get_num_segments()):
                         recording_one = si.split_recording(recording)[segment_index]
@@ -438,8 +441,9 @@ if __name__ == "__main__":
 
     # save params in output
     preprocessing_process = DataProcess(
-        name="Ephys preprocessing",
-        version=PIPELINE_VERSION,  # either release or git commit
+        name=ProcessName.EPHYS_PREPROCESSING,
+        software_version=PIPELINE_VERSION,  # @alessio, seems that this is called software_version (not version) in the version of aind_data_schema that I have
+        code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_preproc,
         end_date_time=datetime_start_preproc + timedelta(seconds=np.floor(elapsed_time_preprocessing)),
         input_location=str(data_folder),
@@ -447,13 +451,14 @@ if __name__ == "__main__":
         code_url=PIPELINE_URL,
         parameters=preprocessing_params,
         notes=preprocessing_notes,
+        outputs=None # @alessio, what should this be?
     )
     print(f"PREPROCESSING time: {elapsed_time_preprocessing}s")
 
     ####### SPIKESORTING ########
     print("\n\nSPIKE SORTING")
     spikesorting_notes = ""
-    sorting_params = None
+    sorting_params: Union[Dict[str, Any], None] = None
 
     datetime_start_sorting = datetime.now()
     t_sorting_start = time.perf_counter()
@@ -472,6 +477,7 @@ if __name__ == "__main__":
             continue
         print(f"Sorting recording: {recording_name}")
         recording = si.load_extractor(recording_folder)
+        assert isinstance(recording, si.BaseRecording), f"Recording {recording_name} is not a BaseRecording. Got {type(recording)}"
         print(recording)
 
         # we need to concatenate segments for KS
@@ -489,13 +495,21 @@ if __name__ == "__main__":
                 delete_output_folder=True,
                 **sorter_params,
             )
+            if sorting is None:
+                raise Exception(f"Sorting for {recording_name} is None")
+            assert isinstance(sorting, si.BaseSorting), f"Sorting for {recording_name} is not a BaseSorting. Got {type(sorting)}"
         except Exception as e:
             # save log to results
             sorting_output_folder.mkdir()
             shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
+            raise # @alessio, do we raise the exception here? if we continue, sorting is not defined.
         print(f"\tRaw sorting output: {sorting}")
         spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
         if sorting_params is None:
+            if sorting.sorting_info is None:
+                raise Exception(f"sorting_info is None")
+            if 'params' not in sorting.sorting_info:
+                raise Exception(f"sorting_info does not contain 'params'")
             sorting_params = sorting.sorting_info["params"]
 
         # remove empty units
@@ -518,9 +532,11 @@ if __name__ == "__main__":
     elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
 
     # save params in output
+    assert sorting_params is not None
     spikesorting_process = DataProcess(
-        name="Spike sorting",
-        version=PIPELINE_VERSION,  # either release or git commit
+        name=ProcessName.SPIKE_SORTING,
+        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_sorting,
         end_date_time=datetime_start_sorting + timedelta(seconds=np.floor(elapsed_time_sorting)),
         input_location=str(data_folder),
@@ -528,6 +544,7 @@ if __name__ == "__main__":
         code_url=PIPELINE_URL,
         parameters=sorting_params,
         notes=spikesorting_notes,
+        outputs=None # @alessio, what should this be?
     )
     print(f"SPIKE SORTING time: {elapsed_time_sorting}s")
 
@@ -549,11 +566,13 @@ if __name__ == "__main__":
         print(f"Postprocessing recording: {recording_name}")
 
         recording = si.load_extractor(recording_folder)
+        assert isinstance(recording, si.BaseRecording), f"Recording {recording_name} is not a BaseRecording. Got {type(recording)}"
 
         # make sure we have spikesorted output for the block-stream
         recording_sorted_folder = spikesorted_folder / recording_name
         assert recording_sorted_folder.is_dir(), f"Could not find spikesorted output for {recording_name}"
         sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
+        assert isinstance(sorting, si.BaseSorting), f"Sorting is not a BaseSorting. Got {type(sorting)}"
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
@@ -564,6 +583,7 @@ if __name__ == "__main__":
         sorting_deduplicated = sc.remove_redundant_units(
             we_raw, duplicate_threshold=curation_params["duplicate_threshold"]
         )
+        assert isinstance(sorting_deduplicated, si.BaseSorting), f"sorting_deduplicated is not a BaseSorting. Got {type(sorting_deduplicated)}"
         print(
             f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
         )
@@ -615,8 +635,9 @@ if __name__ == "__main__":
 
     # save params in output
     postprocessing_process = DataProcess(
-        name="Ephys postprocessing",
-        version=PIPELINE_VERSION,  # either release or git commit
+        name=ProcessName.EPHYS_POSTPROCESSING,
+        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_postprocessing,
         end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
         input_location=str(data_folder),
@@ -624,6 +645,7 @@ if __name__ == "__main__":
         code_url=PIPELINE_URL,
         parameters=postprocessing_params,
         notes=postprocessing_notes,
+        outputs=None # @alessio, what should this be?
     )
     print(f"POSTPROCESSING time: {elapsed_time_postprocessing}s")
 
@@ -675,8 +697,9 @@ if __name__ == "__main__":
 
     # save params in output
     curation_process = DataProcess(
-        name="Ephys curation",
-        version=PIPELINE_VERSION,  # either release or git commit
+        name=ProcessName.EPHYS_CURATION,
+        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_curation,
         end_date_time=datetime_start_curation + timedelta(seconds=np.floor(elapsed_time_curation)),
         input_location=str(data_folder),
@@ -684,6 +707,7 @@ if __name__ == "__main__":
         code_url=PIPELINE_URL,
         parameters=curation_params,
         notes=curation_notes,
+        outputs=None # @alessio, what should this be?
     )
     print(f"CURATION time: {elapsed_time_curation}s")
 
@@ -706,7 +730,7 @@ if __name__ == "__main__":
             visualization_output[recording_name] = {}
 
         # drift
-        cmap = plt.get_cmap(visualization_params["drift"]["cmap"])
+        cmap = plt.get_cmap(visualization_params["drift"]["cmap"]) # type: ignore
         norm = Normalize(
             vmin=visualization_params["drift"]["vmin"], vmax=visualization_params["drift"]["vmax"], clip=True
         )
@@ -735,11 +759,11 @@ if __name__ == "__main__":
             )
             localize_peaks = LocalizeCenterOfMass(
                 recording,
-                local_radius_um=visualization_params["drift"]["localization"]["local_radius_um"],
+                radius_um=visualization_params["drift"]["localization"]["local_radius_um"], # @alessio, in my version of aind_data_schema, this is called radius_um (not local_radius_um)
                 parents=[extract_dense_waveforms],
             )
             pipeline_nodes = [extract_dense_waveforms, localize_peaks]
-            peaks, peak_locations = detect_peaks(
+            peaks, peak_locations = detect_peaks( # type: ignore
                 recording, pipeline_nodes=pipeline_nodes, **visualization_params["drift"]["detection"]
             )
             print(f"\tDetected {len(peaks)} peaks")
@@ -752,7 +776,8 @@ if __name__ == "__main__":
             ncols=recording.get_num_segments(), figsize=visualization_params["drift"]["figsize"]
         )
         for segment_index in range(recording.get_num_segments()):
-            segment_mask = peaks["segment_index"] == segment_index
+            # @alessio, it appears that peaks is a list (see above), but here it is used as a dict
+            segment_mask = peaks["segment_index"] == segment_index # type: ignore
             x = peaks[segment_mask]["sample_index"] / recording.sampling_frequency
             y = peak_locations[segment_mask]["y"]
             # subsample
@@ -765,16 +790,17 @@ if __name__ == "__main__":
                 ax_drift = axs_drift
             else:
                 ax_drift = axs_drift[segment_index]
+            ax_drift: Any = ax_drift # cast it to Any
             ax_drift.scatter(x_sub, y_sub, s=1, c=colors, alpha=alpha)
             ax_drift.set_xlabel("time (s)", fontsize=12)
-            ax_drift.set_ylabel("depth ($\mu$m)", fontsize=12)
+            ax_drift.set_ylabel(r"depth ($\mu$m)", fontsize=12)
             ax_drift.set_xlim(0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency)
             ax_drift.set_ylim(ylim)
             ax_drift.spines["top"].set_visible(False)
             ax_drift.spines["right"].set_visible(False)
         fig_drift_folder = results_folder / "drift_maps"
         fig_drift_folder.mkdir(exist_ok=True)
-        fig_drift.savefig(fig_drift_folder / f"{recording_name}_drift.png", dpi=300)
+        fig_drift.savefig(str(fig_drift_folder / f"{recording_name}_drift.png"), dpi=300) # type: ignore
 
         # make a sorting view View
         v_drift = vv.TabLayoutItem(
@@ -863,6 +889,7 @@ if __name__ == "__main__":
         print(f"\tVisualizing sorting summary")
         we = si.load_waveforms(recording_folder)
         sorting_precurated = si.load_extractor(results_folder / "sorting_precurated" / recording_name)
+        assert isinstance(sorting_precurated, si.BaseSorting), f"sorting_precurated is not a BaseSorting. Got {type(sorting_precurated)}"
         # set waveform_extractor sorting object to have pass_qc property
         we.sorting = sorting_precurated
 
@@ -917,8 +944,9 @@ if __name__ == "__main__":
     elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
 
     visualization_process = DataProcess(
-        name="Ephys visualization",
-        version=PIPELINE_VERSION,  # either release or git commit
+        name=ProcessName.EPHYS_VISUALIZATION,
+        software_version=PIPELINE_VERSION,  # @alessio, see note above
+        code_version=None, # @alessio, what should this be?
         start_date_time=datetime_start_visualization,
         end_date_time=datetime_start_visualization + timedelta(seconds=np.floor(elapsed_time_visualization)),
         input_location=str(data_folder),
@@ -926,6 +954,7 @@ if __name__ == "__main__":
         code_url=PIPELINE_URL,
         parameters=visualization_params,
         notes=visualization_notes,
+        outputs=None # @alessio, what should this be?
     )
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
@@ -937,14 +966,15 @@ if __name__ == "__main__":
         curation_process,
         visualization_process,
     ]
-    ephys_processing = Processing(
-        pipeline_url=PIPELINE_URL, pipeline_version=PIPELINE_VERSION, data_processes=ephys_data_processes
+    # @alessio, in my version of aind_data_schema, Processing is has different fields: describedBy, schema_version, etc.
+    ephys_processing = Processing( # type: ignore
+        pipeline_url=PIPELINE_URL, pipeline_version=PIPELINE_VERSION, data_processes=ephys_data_processes # type: ignore
     )
 
     if processing is None:
         processing = ephys_processing
     else:
-        processing.data_processes.append(ephys_data_processes)
+        processing.data_processes.append(ephys_data_processes) # type: ignore
 
     # save processing files to output
     with (results_folder / "processing.json").open("w") as f:
@@ -953,7 +983,7 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS)
+        upgraded_data_description = upgrader.upgrade_data_description(experiment_type=dd.ExperimentType.ECEPHYS) # type: ignore - @alessio, ExperimentType is not defined in my version of aind_data_schema
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
@@ -966,9 +996,9 @@ if __name__ == "__main__":
         data_description_dict["input_data_name"] = session_name
         data_description_dict["institution"] = dd.Institution.AIND
         data_description_dict["investigators"] = []
-        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
+        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")] # type: ignore - @alessio, in my version of aind_data_schema, there are a couple additional parameters here
         data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS
+        data_description_dict["experiment_type"] = dd.ExperimentType.ECEPHYS # type: ignore - @alessio, ExperimentType is not defined in my version of aind_data_schema
         data_description_dict["subject_id"] = subject_id
 
         derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
