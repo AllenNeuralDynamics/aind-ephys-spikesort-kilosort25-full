@@ -254,7 +254,6 @@ if __name__ == "__main__":
     session_name = ecephys_spikeglx_folder.name
     num_blocks = se.get_neo_num_blocks(input_format, ecephys_spikeglx_folder)
     stream_names, stream_ids = se.get_neo_streams(input_format, ecephys_spikeglx_folder)
-    
 
     print(f"Global job kwargs: {si.get_global_job_kwargs()}")
     print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
@@ -275,8 +274,7 @@ if __name__ == "__main__":
             if "ap" in stream_name:
                 exp_stream_name = f"block{block_index}_{stream_name}"
 
-                recording = se.read_spikeglx(ecephys_spikeglx_folder,
-                                             stream_name=stream_name, block_index=block_index)
+                recording = se.read_spikeglx(ecephys_spikeglx_folder, stream_name=stream_name, block_index=block_index)
 
                 if DEBUG:
                     recording_list = []
@@ -400,12 +398,16 @@ if __name__ == "__main__":
                                 recording_processed = recording_hp_spatial
 
                             if preprocessing_params["remove_bad_channels"]:
-                                print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
+                                print(
+                                    f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing"
+                                )
                                 recording_processed = recording_processed.remove_channels(bad_channel_ids)
                                 preprocessing_notes += (
                                     f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                                 )
-                            recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
+                            recording_saved = recording_processed.save(
+                                folder=preprocessed_output_folder / recording_name
+                            )
                             recording_drift = recording_saved
                     if skip_processing:
                         # in this case, processed timeseries will not be visualized
@@ -588,7 +590,6 @@ if __name__ == "__main__":
 
     # loop through block-streams
     for recording_name in recording_names:
-
         recording_folder = postprocessed_folder / recording_name
         if not recording_folder.is_dir():
             print(f"Skipping curation for recording: {recording_name}")
@@ -829,9 +830,7 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
-                url = v_summary.url(
-                    label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary"
-                )
+                url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary")
                 print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 

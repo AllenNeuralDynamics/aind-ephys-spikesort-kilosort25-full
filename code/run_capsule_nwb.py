@@ -267,7 +267,6 @@ if __name__ == "__main__":
     recording_names = []
     preprocessing_notes = ""
     preprocessing_vizualization_data = {}
-    
 
     recording_name_stem = ecephys_nwb_file.stem
     session_name = recording_name_stem
@@ -309,27 +308,18 @@ if __name__ == "__main__":
         else:
             recording_ps_full = recording
 
-        recording_hp_full = spre.highpass_filter(
-            recording_ps_full, **preprocessing_params["highpass_filter"]
-        )
-        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
-            dict(highpass=recording_hp_full)
-        )
+        recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
+        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(dict(highpass=recording_hp_full))
 
-        if (
-            recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"]
-            and not DEBUG
-        ):
-            print(
-                f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing"
+        if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
+            print(f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing")
+            preprocessing_notes += (
+                f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
             )
-            preprocessing_notes += f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
             skip_processing = True
         if not recording.has_channel_location():
             print(f"\tRecording does not have channel locations. Skipping further processing")
-            preprocessing_notes += (
-                f"\n- Recording does not have channel locations. Skipping further processing\n"
-            )
+            preprocessing_notes += f"\n- Recording does not have channel locations. Skipping further processing\n"
             skip_processing = True
 
         if not skip_processing:
@@ -352,9 +342,7 @@ if __name__ == "__main__":
 
             skip_processing = False
             max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-            if len(all_bad_channel_ids) >= int(
-                max_bad_channel_fraction_to_remove * recording.get_num_channels()
-            ):
+            if len(all_bad_channel_ids) >= int(max_bad_channel_fraction_to_remove * recording.get_num_channels()):
                 print(
                     f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
                     f"Skipping further processing for this recording."
@@ -367,9 +355,7 @@ if __name__ == "__main__":
                 if preprocessing_params["remove_out_channels"]:
                     print(f"\tRemoving {len(out_channel_ids)} out channels")
                     recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                    preprocessing_notes += (
-                        f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
-                    )
+                    preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
                 else:
                     recording_rm_out = recording_hp_full
 
@@ -397,9 +383,7 @@ if __name__ == "__main__":
                 if preprocessing_params["remove_bad_channels"]:
                     print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
                     recording_processed = recording_processed.remove_channels(bad_channel_ids)
-                    preprocessing_notes += (
-                        f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
-                    )
+                    preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                 recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
                 recording_drift = recording_saved
         if skip_processing:
@@ -425,7 +409,6 @@ if __name__ == "__main__":
     # try results here
     spikesorted_raw_output_folder = scratch_folder / "spikesorted_raw"
     for recording_name in recording_names:
-
         sorting_output_folder = results_folder / "spikesorted" / recording_name
 
         recording_folder = preprocessed_folder / recording_name
@@ -825,9 +808,7 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
-                url = v_summary.url(
-                    label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary"
-                )
+                url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary")
                 print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 
