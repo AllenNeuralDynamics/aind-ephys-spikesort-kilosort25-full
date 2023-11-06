@@ -794,7 +794,7 @@ if __name__ == "__main__":
                 radius_um=visualization_params["drift"]["localization"]["radius_um"],
                 parents=[extract_sparse_waveforms],
             )
-            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms, localize_peaks]
+            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms_node, localize_peaks_node]
             peaks, peak_locations = run_node_pipeline(recording, pipeline_nodes=pipeline_nodes)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
