@@ -54,7 +54,7 @@ job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
 
 preprocessing_params = dict(
     preprocessing_strategy="cmr",  # 'destripe' or 'cmr'
-    min_preprocessing_duration=120, # if less than this duration, processing is skipped (probably a test recording)
+    min_preprocessing_duration=120,  # if less than this duration, processing is skipped (probably a test recording)
     highpass_filter=dict(freq_min=300.0, margin_ms=5.0),
     phase_shift=dict(margin_ms=100.0),
     detect_bad_channels=dict(
@@ -106,7 +106,7 @@ qm_params = {
         "average_num_spikes_per_bin": 50,
         "percentiles": (5, 95),
         "min_num_bins": 10,
-        "amplitude_extension": "spike_amplitudes"
+        "amplitude_extension": "spike_amplitudes",
     },
     "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
     "synchrony": {"synchrony_sizes": (2, 4, 8)},
@@ -367,20 +367,27 @@ if __name__ == "__main__":
                     # maybe a recording is from a different source and it doesn't need to be phase shifted
                     if "inter_sample_shift" in recording.get_property_keys():
                         recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
-                        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(dict(phase_shift=recording_ps_full))
+                        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
+                            dict(phase_shift=recording_ps_full)
+                        )
                     else:
                         recording_ps_full = recording
 
                     recording_hp_full = spre.highpass_filter(
                         recording_ps_full, **preprocessing_params["highpass_filter"]
                     )
-                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(dict(highpass=recording_hp_full))
+                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
+                        dict(highpass=recording_hp_full)
+                    )
 
-                    if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
-                        print(f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing")
-                        preprocessing_notes += (
-                            f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
+                    if (
+                        recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"]
+                        and not DEBUG
+                    ):
+                        print(
+                            f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing"
                         )
+                        preprocessing_notes += f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
                         skip_processing = True
                     if not recording.has_channel_location():
                         print(f"\tRecording does not have channel locations. Skipping further processing")
@@ -451,12 +458,16 @@ if __name__ == "__main__":
                                 recording_processed = recording_hp_spatial
 
                             if preprocessing_params["remove_bad_channels"]:
-                                print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
+                                print(
+                                    f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing"
+                                )
                                 recording_processed = recording_processed.remove_channels(bad_channel_ids)
                                 preprocessing_notes += (
                                     f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                                 )
-                            recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
+                            recording_saved = recording_processed.save(
+                                folder=preprocessed_output_folder / recording_name
+                            )
                             recording_drift = recording_saved
 
                     if skip_processing:
@@ -679,7 +690,6 @@ if __name__ == "__main__":
 
     # loop through block-streams
     for recording_name in recording_names:
-
         recording_folder = postprocessed_folder / recording_name
         if not recording_folder.is_dir():
             print(f"Skipping curation for recording: {recording_name}")
@@ -764,14 +774,13 @@ if __name__ == "__main__":
             recording = drift_data["recording"]
 
             if not recording.has_channel_location():
-                print(f"\tSkipping drift and timeseries visualization for recording: {recording_name}. No channel locations.")
+                print(
+                    f"\tSkipping drift and timeseries visualization for recording: {recording_name}. No channel locations."
+                )
                 continue
 
             # Here we use the node pipeline implementation
-            peak_detector_node = DetectPeakLocallyExclusive(
-                recording,
-                **visualization_params["drift"]["detection"]
-            )
+            peak_detector_node = DetectPeakLocallyExclusive(recording, **visualization_params["drift"]["detection"])
             extract_sparse_waveforms_node = ExtractSparseWaveforms(
                 recording,
                 ms_before=visualization_params["drift"]["localization"]["ms_before"],
@@ -786,9 +795,7 @@ if __name__ == "__main__":
                 parents=[extract_sparse_waveforms],
             )
             pipeline_nodes = [peak_detector_node, extract_sparse_waveforms, localize_peaks]
-            peaks, peak_locations = run_node_pipeline(
-                recording, pipeline_nodes=pipeline_nodes
-            )
+            peaks, peak_locations = run_node_pipeline(recording, pipeline_nodes=pipeline_nodes)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
