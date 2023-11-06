@@ -18,10 +18,8 @@ RUN pip install -U --no-cache-dir --ignore-installed jupyter
 # needed for correct functioning of sortingview
 RUN pip install -U --no-cache-dir --ignore-installed \
     pyvips==2.2.1 \
-    cryptography==37.0.4 \
-    wavpack-numcodecs==0.1.4 \
-    numba==0.56.4 \
-    aind-data-schema==0.15.17
+    wavpack-numcodecs==0.1.5 \
+    aind-data-schema==0.15.25
 
 COPY postInstall /
 RUN /postInstall
