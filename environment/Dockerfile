@@ -1,5 +1,5 @@
 # hash:sha256:9b2d86ce40313198648da967c4b1f5ac29647f3fae84847c0b77cc2f7fa6b428
-FROM registry.codeocean.allenneuraldynamics-test.org/codeocean/kilosort2_5-compiled-base:latest
+FROM registry.codeocean.allenneuraldynamics-test.org/codeocean/kilosort2_5-compiled-base:0.2.0
 
 ARG DEBIAN_FRONTEND=noninteractive
 
