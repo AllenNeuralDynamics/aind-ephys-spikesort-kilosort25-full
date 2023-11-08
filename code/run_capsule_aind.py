@@ -316,7 +316,9 @@ if __name__ == "__main__":
 
     ####### PREPROCESSING #######
     print("\n\nPREPROCESSING")
-    preprocessed_output_folder = tmp_folder / "preprocessed"
+    preprocessed_tmp_folder = tmp_folder / "preprocessed"
+    preprocessed_output_folder = results_folder / "preprocessed"
+    preprocessed_output_folder.mkdir(exist_ok=True)
 
     datetime_start_preproc = datetime.now()
     t_preprocessing_start = time.perf_counter()
@@ -467,7 +469,7 @@ if __name__ == "__main__":
                                     f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                                 )
                             recording_saved = recording_processed.save(
-                                folder=preprocessed_output_folder / recording_name
+                                folder=preprocessed_tmp_folder / recording_name
                             )
                             recording_processed.dump_to_json(preprocessed_output_folder / f"{recording_name}.json", relative_to=data_folder)
                             recording_drift = recording_saved
@@ -503,7 +505,7 @@ if __name__ == "__main__":
 
     datetime_start_sorting = datetime.now()
     t_sorting_start = time.perf_counter()
-    preprocessed_folder = preprocessed_output_folder
+    preprocessed_folder = preprocessed_tmp_folder
 
     # try results here
     spikesorted_raw_output_folder = scratch_folder / "spikesorted_raw"
