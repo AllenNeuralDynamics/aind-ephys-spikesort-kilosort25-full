@@ -123,13 +123,14 @@ qm_metric_names = [
     "rp_violation",
     "sliding_rp_violation",
     "amplitude_cutoff",
+    "amplitude_median",
+    "amplitude_cv",
+    "synchrony",
+    "firing_range",
     "drift",
     "isolation_distance",
     "l_ratio",
     "d_prime",
-    "amplitude_cv",
-    "synchrony",
-    "firing_range",
 ]
 
 sparsity_params = dict(method="radius", radius_um=100)
@@ -468,6 +469,7 @@ if __name__ == "__main__":
                             recording_saved = recording_processed.save(
                                 folder=preprocessed_output_folder / recording_name
                             )
+                            recording_processed.dump_to_json(preprocessed_output_folder / f"{recording_name}.json", relative_to=data_folder)
                             recording_drift = recording_saved
 
                     if skip_processing:
