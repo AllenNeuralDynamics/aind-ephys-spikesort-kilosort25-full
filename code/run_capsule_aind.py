@@ -143,6 +143,7 @@ postprocessing_params = dict(
         max_spikes_per_unit=100,
         return_scaled=False,
         dtype=None,
+        sparse=False,
         precompute_template=("average",),
         use_relative_path=True,
     ),
