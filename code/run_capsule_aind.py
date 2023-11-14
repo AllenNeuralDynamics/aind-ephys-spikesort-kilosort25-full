@@ -35,6 +35,7 @@ import sortingview.views as vv
 import aind_data_schema.data_description as dd
 from aind_data_schema.processing import DataProcess, Processing, PipelineProcess
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
+from aind_data_schema.schema_upgrade.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
 # LOCAL
 from version import version as __version__
@@ -131,6 +132,7 @@ qm_metric_names = [
     "isolation_distance",
     "l_ratio",
     "d_prime",
+    "nearest_neighbor",
 ]
 
 sparsity_params = dict(method="radius", radius_um=100)
@@ -999,18 +1001,22 @@ if __name__ == "__main__":
         curation_process,
         visualization_process,
     ]
-    processing_pipeline = PipelineProcess(
-        data_processes=ephys_data_processes,
-        processor_full_name=MAINTAINER,
-        pipeline_version=PIPELINE_VERSION,
-        pipeline_url=PIPELINE_URL,
-    )
-    ephys_processing = Processing(processing_pipeline=processing_pipeline)
 
-    if processing is None:
-        processing = ephys_processing
+    if (session / "processing.json").is_file():
+        with open(session / "processing.json", "r") as processing_file:
+            processing_dict = json.load(processing_file)
+        # Allow for parsing earlier versions of Processing files
+        processing_old = Processing.construct(**processing_dict)
+        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
+        processing.processing_pipeline.data_processes.append(ephys_data_processes)
     else:
-        processing.data_processes.append(ephys_data_processes)
+        processing_pipeline = PipelineProcess(
+            data_processes=ephys_data_processes,
+            processor_full_name=PIPELINE_MAINAINER,
+            pipeline_url=PIPELINE_URL,
+            pipeline_version=PIPELINE_VERSION
+        )
+        processing = Processing(processing_pipeline=processing_pipeline)
 
     # save processing files to output
     with (results_folder / "processing.json").open("w") as f:

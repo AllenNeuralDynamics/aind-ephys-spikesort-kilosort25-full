@@ -19,7 +19,7 @@ RUN pip install -U --no-cache-dir --ignore-installed jupyter
 RUN pip install -U --no-cache-dir --ignore-installed \
     pyvips==2.2.1 \
     wavpack-numcodecs==0.1.5 \
-    aind-data-schema==0.15.25
+    aind-data-schema==0.17.1
 
 COPY postInstall /
 RUN /postInstall
