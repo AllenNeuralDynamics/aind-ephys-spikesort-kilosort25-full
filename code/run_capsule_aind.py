@@ -44,7 +44,7 @@ matplotlib.use("agg")
 
 GH_CURATION_REPO = "gh://AllenNeuralDynamics/ephys-sorting-manual-curation/main"
 PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
-MAINTAINER = "Alessio Buccino"
+PIPELINE_MAINTAINER = "Alessio Buccino"
 
 # Retrieve pipeline version
 PIPELINE_VERSION = __version__
@@ -1007,12 +1007,12 @@ if __name__ == "__main__":
             processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
         processing_old = Processing.construct(**processing_dict)
-        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINAINER)
+        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINTAINER)
         processing.processing_pipeline.data_processes.append(ephys_data_processes)
     else:
         processing_pipeline = PipelineProcess(
             data_processes=ephys_data_processes,
-            processor_full_name=PIPELINE_MAINAINER,
+            processor_full_name=PIPELINE_MAINTAINER,
             pipeline_url=PIPELINE_URL,
             pipeline_version=PIPELINE_VERSION
         )
@@ -1025,7 +1025,7 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade_data_description(platform=dd.Platform.ECEPHYS)
+        upgraded_data_description = upgrader.upgrade(platform=dd.Platform.ECEPHYS)
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
