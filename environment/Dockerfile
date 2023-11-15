@@ -15,4 +15,4 @@ RUN pip install -U --no-cache-dir --ignore-installed jupyter
 RUN pip install -U --no-cache-dir --ignore-installed \
     pyvips==2.2.1 \
     pynwb==2.4.0 \
-    spikeinterface[full,widgets]==0.99.0
+    spikeinterface[full,widgets]==0.99.1
