@@ -31,22 +31,11 @@ import spikeinterface.widgets as sw
 import sortingview.views as vv
 
 
-# AIND
-import aind_data_schema.data_description as dd
-from aind_data_schema.processing import DataProcess, Processing, PipelineProcess
-from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
-
 # LOCAL
 from version import version as __version__
 
 matplotlib.use("agg")
 
-GH_CURATION_REPO = "gh://AllenNeuralDynamics/ephys-sorting-manual-curation/main"
-PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
-MAINTAINER = "Alessio Buccino"
-
-# Retrieve pipeline version
-PIPELINE_VERSION = __version__
 
 ### PARAMS ###
 n_jobs = os.cpu_count()
@@ -65,9 +54,9 @@ preprocessing_params = dict(
         n_neighbors=11,
         seed=0,
     ),
-    remove_out_channels=True,
-    remove_bad_channels=True,
-    max_bad_channel_fraction_to_remove=0.5,
+    remove_out_channels=False,
+    remove_bad_channels=False,
+    max_bad_channel_fraction_to_remove=1.1,
     common_reference=dict(reference="global", operator="median"),
     highpass_spatial_filter=dict(
         n_channel_pad=60,
@@ -184,7 +173,7 @@ curation_params = dict(
 visualization_params = dict(
     timeseries=dict(n_snippets_per_segment=2, snippet_duration_s=0.5, skip=False),
     drift=dict(
-        detection=dict(peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
+        detection=dict(method="locally_exclusive", peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
         localization=dict(ms_before=0.1, ms_after=0.3, radius_um=100.0),
         n_skip=30,
         alpha=0.15,
@@ -196,8 +185,15 @@ visualization_params = dict(
 )
 
 data_folder = Path("../data")
-results_folder = Path("../results")
 scratch_folder = Path("../scratch")
+results_folder = Path("../results")
+
+if scratch_folder.is_dir():
+    shutil.rmtree(scratch_folder)
+scratch_folder.mkdir(exist_ok=True)
+if results_folder.is_dir():
+    shutil.rmtree(results_folder)
+results_folder.mkdir(exist_ok=True)
 
 tmp_folder = results_folder / "tmp"
 if tmp_folder.is_dir():
@@ -250,66 +246,14 @@ if __name__ == "__main__":
         # do not use presence ratio for short durations
         curation_params["presence_ratio_threshold"] = 0.1
 
-    ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
-    assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
-    session = ecephys_sessions[0]
-    session_name = session.name
+    ### DATA LOADING SECTION ###
 
-    # propagate existing metadata files to results
-    metadata_json_files = [
-        p
-        for p in session.iterdir()
-        if p.is_file() and p.suffix == ".json" and "processing" not in p.name and "data_description" not in p.name
-    ]
-    for json_file in metadata_json_files:
-        shutil.copy(json_file, results_folder)
+    ## NAB data loader ##
+    input_format = "nwb"
+    ecephys_nwb_files = [p for p in data_folder.iterdir() if ".nwb" in p.name]
+    assert len(ecephys_nwb_files) == 1, "Provide one NWB file at a time"
+    ecephys_nwb_file = ecephys_nwb_files[0]
 
-    if (session / "processing.json").is_file():
-        with open(session / "processing.json", "r") as processing_file:
-            processing_dict = json.load(processing_file)
-        # Allow for parsing earlier versions of Processing files
-        processing = Processing.construct(**processing_dict)
-    else:
-        processing = None
-
-    if (session / "data_description.json").is_file():
-        with open(session / "data_description.json", "r") as data_description_file:
-            data_description_dict = json.load(data_description_file)
-        # Allow for parsing earlier versions of Processing files
-        data_description = dd.DataDescription.construct(**data_description_dict)
-    else:
-        data_description = None
-
-    if (session / "subject.json").is_file():
-        with open(session / "subject.json", "r") as subject_file:
-            subject_info = json.load(subject_file)
-        subject_id = subject_info["subject_id"]
-    elif len(session_name.split("_")) > 1:
-        subject_id = session_name.split("_")[1]
-    else:
-        subject_id = "000000"  # unknown
-
-    ecephys_full_folder = session / "ecephys"
-    ecephys_compressed_folder = session / "ecephys_compressed"
-    compressed = False
-    if ecephys_compressed_folder.is_dir():
-        compressed = True
-        ecephys_folder = session / "ecephys_clipped"
-    else:
-        ecephys_folder = ecephys_full_folder
-
-    # get blocks/experiments and streams info
-    num_blocks = se.get_neo_num_blocks("openephys", ecephys_folder)
-    stream_names, stream_ids = se.get_neo_streams("openephys", ecephys_folder)
-
-    # load first stream to map block_indices to experiment_names
-    rec_test = se.read_openephys(ecephys_folder, block_index=0, stream_name=stream_names[0])
-    record_node = list(rec_test.neo_reader.folder_structure.keys())[0]
-    experiments = rec_test.neo_reader.folder_structure[record_node]["experiments"]
-    exp_ids = list(experiments.keys())
-    experiment_names = [experiments[exp_id]["name"] for exp_id in sorted(exp_ids)]
-
-    print(f"Session: {session_name} - Num. Blocks {num_blocks} - Num. streams: {len(stream_names)}")
     print(f"Global job kwargs: {si.get_global_job_kwargs()}")
     print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
 
@@ -323,175 +267,134 @@ if __name__ == "__main__":
     recording_names = []
     preprocessing_notes = ""
     preprocessing_vizualization_data = {}
-    for block_index in range(num_blocks):
-        for stream_name in stream_names:
-            # skip NIDAQ and NP1-LFP streams
-            if "NI-DAQ" not in stream_name and "LFP" not in stream_name and "Rhythm" not in stream_name:
-                experiment_name = experiment_names[block_index]
-                exp_stream_name = f"{experiment_name}_{stream_name}"
 
-                if not compressed:
-                    recording = se.read_openephys(ecephys_folder, stream_name=stream_name, block_index=block_index)
+    recording_name_stem = ecephys_nwb_file.stem
+    session_name = recording_name_stem
+    recording = se.read_nwb_recording(ecephys_nwb_file)
+
+    if DEBUG:
+        recording_list = []
+        for segment_index in range(recording.get_num_segments()):
+            recording_one = si.split_recording(recording)[segment_index]
+            recording_one = recording_one.frame_slice(
+                start_frame=0, end_frame=int(DEBUG_DURATION * recording.sampling_frequency)
+            )
+            recording_list.append(recording_one)
+        recording = si.append_recordings(recording_list)
+
+    if CONCAT:
+        recordings = [recording]
+    else:
+        recordings = si.split_recording(recording)
+
+    for i_r, recording in enumerate(recordings):
+        if CONCAT:
+            recording_name = recording_name_stem
+        else:
+            recording_name = f"{recording_name_stem}{i_r + 1}"
+        preprocessing_vizualization_data[recording_name] = {}
+        preprocessing_vizualization_data[recording_name]["timeseries"] = {}
+        recording_names.append(recording_name)
+        print(f"Preprocessing recording: {recording_name}")
+        print(f"\tDuration: {np.round(recording.get_total_duration(), 2)} s")
+
+        preprocessing_vizualization_data[recording_name]["timeseries"]["full"] = dict(raw=recording)
+        # maybe a recording is from a different source and it doesn't need to be phase shifted
+        if "inter_sample_shift" in recording.get_property_keys():
+            recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
+            preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
+                dict(phase_shift=recording_ps_full)
+            )
+        else:
+            recording_ps_full = recording
+
+        recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
+        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(dict(highpass=recording_hp_full))
+
+        if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
+            print(f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing")
+            preprocessing_notes += (
+                f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
+            )
+            skip_processing = True
+        if not recording.has_channel_location():
+            print(f"\tRecording does not have channel locations. Skipping further processing")
+            preprocessing_notes += f"\n- Recording does not have channel locations. Skipping further processing\n"
+            skip_processing = True
+
+        if not skip_processing:
+            # IBL bad channel detection
+            _, channel_labels = spre.detect_bad_channels(
+                recording_hp_full, **preprocessing_params["detect_bad_channels"]
+            )
+            dead_channel_mask = channel_labels == "dead"
+            noise_channel_mask = channel_labels == "noise"
+            out_channel_mask = channel_labels == "out"
+            print(f"\tBad channel detection:")
+            print(
+                f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}"
+            )
+            dead_channel_ids = recording_hp_full.channel_ids[dead_channel_mask]
+            noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
+            out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
+
+            all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
+
+            skip_processing = False
+            max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
+            if len(all_bad_channel_ids) >= int(max_bad_channel_fraction_to_remove * recording.get_num_channels()):
+                print(
+                    f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
+                    f"Skipping further processing for this recording."
+                )
+                preprocessing_notes += (
+                    f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
+                )
+                skip_processing = True
+            else:
+                if preprocessing_params["remove_out_channels"]:
+                    print(f"\tRemoving {len(out_channel_ids)} out channels")
+                    recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
+                    preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
                 else:
-                    recording = si.read_zarr(ecephys_compressed_folder / f"{exp_stream_name}.zarr")
+                    recording_rm_out = recording_hp_full
 
-                if DEBUG:
-                    recording_list = []
-                    for segment_index in range(recording.get_num_segments()):
-                        recording_one = si.split_recording(recording)[segment_index]
-                        recording_one = recording_one.frame_slice(
-                            start_frame=0, end_frame=int(DEBUG_DURATION * recording.sampling_frequency)
-                        )
-                        recording_list.append(recording_one)
-                    recording = si.append_recordings(recording_list)
+                recording_processed_cmr = spre.common_reference(
+                    recording_rm_out, **preprocessing_params["common_reference"]
+                )
 
-                if CONCAT:
-                    recordings = [recording]
+                bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
+                recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
+                recording_hp_spatial = spre.highpass_spatial_filter(
+                    recording_interp, **preprocessing_params["highpass_spatial_filter"]
+                )
+                preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
+                    highpass=recording_rm_out,
+                    cmr=recording_processed_cmr,
+                    highpass_spatial=recording_hp_spatial,
+                )
+
+                preproc_strategy = preprocessing_params["preprocessing_strategy"]
+                if preproc_strategy == "cmr":
+                    recording_processed = recording_processed_cmr
                 else:
-                    recordings = si.split_recording(recording)
+                    recording_processed = recording_hp_spatial
 
-                for i_r, recording in enumerate(recordings):
-                    skip_processing = False
-                    if CONCAT:
-                        recording_name = f"{exp_stream_name}_recording"
-                    else:
-                        recording_name = f"{exp_stream_name}_recording{i_r + 1}"
-
-                    preprocessing_vizualization_data[recording_name] = {}
-                    preprocessing_vizualization_data[recording_name]["timeseries"] = {}
-                    recording_names.append(recording_name)
-                    print(f"Preprocessing recording: {recording_name}")
-                    print(f"\tDuration: {np.round(recording.get_total_duration(), 2)} s")
-
-                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"] = dict(raw=recording)
-                    # maybe a recording is from a different source and it doesn't need to be phase shifted
-                    if "inter_sample_shift" in recording.get_property_keys():
-                        recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
-                        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
-                            dict(phase_shift=recording_ps_full)
-                        )
-                    else:
-                        recording_ps_full = recording
-
-                    recording_hp_full = spre.highpass_filter(
-                        recording_ps_full, **preprocessing_params["highpass_filter"]
-                    )
-                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
-                        dict(highpass=recording_hp_full)
-                    )
-
-                    if (
-                        recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"]
-                        and not DEBUG
-                    ):
-                        print(
-                            f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing"
-                        )
-                        preprocessing_notes += f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
-                        skip_processing = True
-                    if not recording.has_channel_location():
-                        print(f"\tRecording does not have channel locations. Skipping further processing")
-                        preprocessing_notes += (
-                            f"\n- Recording does not have channel locations. Skipping further processing\n"
-                        )
-                        skip_processing = True
-
-                    if not skip_processing:
-                        # IBL bad channel detection
-                        _, channel_labels = spre.detect_bad_channels(
-                            recording_hp_full, **preprocessing_params["detect_bad_channels"]
-                        )
-                        dead_channel_mask = channel_labels == "dead"
-                        noise_channel_mask = channel_labels == "noise"
-                        out_channel_mask = channel_labels == "out"
-                        print(f"\tBad channel detection:")
-                        print(
-                            f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}"
-                        )
-                        dead_channel_ids = recording_hp_full.channel_ids[dead_channel_mask]
-                        noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
-                        out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
-
-                        all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
-
-                        max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-                        if len(all_bad_channel_ids) >= int(
-                            max_bad_channel_fraction_to_remove * recording.get_num_channels()
-                        ):
-                            print(
-                                f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
-                                f"Skipping further processing for this recording."
-                            )
-                            preprocessing_notes += (
-                                f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
-                            )
-                            skip_processing = True
-                        else:
-                            if preprocessing_params["remove_out_channels"]:
-                                print(f"\tRemoving {len(out_channel_ids)} out channels")
-                                recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                                preprocessing_notes += (
-                                    f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
-                                )
-                            else:
-                                recording_rm_out = recording_hp_full
-
-                            recording_processed_cmr = spre.common_reference(
-                                recording_rm_out, **preprocessing_params["common_reference"]
-                            )
-
-                            bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
-                            recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
-                            recording_hp_spatial = spre.highpass_spatial_filter(
-                                recording_interp, **preprocessing_params["highpass_spatial_filter"]
-                            )
-                            preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
-                                highpass=recording_rm_out,
-                                cmr=recording_processed_cmr,
-                                highpass_spatial=recording_hp_spatial,
-                            )
-
-                            preproc_strategy = preprocessing_params["preprocessing_strategy"]
-                            if preproc_strategy == "cmr":
-                                recording_processed = recording_processed_cmr
-                            else:
-                                recording_processed = recording_hp_spatial
-
-                            if preprocessing_params["remove_bad_channels"]:
-                                print(
-                                    f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing"
-                                )
-                                recording_processed = recording_processed.remove_channels(bad_channel_ids)
-                                preprocessing_notes += (
-                                    f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
-                                )
-                            recording_saved = recording_processed.save(
-                                folder=preprocessed_output_folder / recording_name
-                            )
-                            recording_drift = recording_saved
-
-                    if skip_processing:
-                        # in this case, processed timeseries will not be visualized
-                        preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = None
-                        recording_drift = recording_hp_full
-                    # store recording for drift visualization
-                    preprocessing_vizualization_data[recording_name]["drift"] = dict(recording=recording_drift)
+                if preprocessing_params["remove_bad_channels"]:
+                    print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
+                    recording_processed = recording_processed.remove_channels(bad_channel_ids)
+                    preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
+                recording_drift = recording_saved
+        if skip_processing:
+            # in this case, processed timeseries will not be visualized
+            preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = None
+            recording_drift = recording_hp_full
+        # store recording for drift visualization
+        preprocessing_vizualization_data[recording_name]["drift"] = dict(recording=recording_drift)
 
     t_preprocessing_end = time.perf_counter()
     elapsed_time_preprocessing = np.round(t_preprocessing_end - t_preprocessing_start, 2)
-
-    # save params in output
-    preprocessing_process = DataProcess(
-        name="Ephys preprocessing",
-        software_version=PIPELINE_VERSION,  # either release or git commit
-        start_date_time=datetime_start_preproc,
-        end_date_time=datetime_start_preproc + timedelta(seconds=np.floor(elapsed_time_preprocessing)),
-        input_location=str(data_folder),
-        output_location=str(results_folder),
-        code_url=PIPELINE_URL,
-        parameters=preprocessing_params,
-        notes=preprocessing_notes,
-    )
     print(f"PREPROCESSING time: {elapsed_time_preprocessing}s")
 
     ####### SPIKESORTING ########
@@ -560,19 +463,6 @@ if __name__ == "__main__":
 
     t_sorting_end = time.perf_counter()
     elapsed_time_sorting = np.round(t_sorting_end - t_sorting_start, 2)
-
-    # save params in output
-    spikesorting_process = DataProcess(
-        name="Spike sorting",
-        software_version=PIPELINE_VERSION,  # either release or git commit
-        start_date_time=datetime_start_sorting,
-        end_date_time=datetime_start_sorting + timedelta(seconds=np.floor(elapsed_time_sorting)),
-        input_location=str(data_folder),
-        output_location=str(results_folder),
-        code_url=PIPELINE_URL,
-        parameters=sorting_params,
-        notes=spikesorting_notes,
-    )
     print(f"SPIKE SORTING time: {elapsed_time_sorting}s")
 
     ###### POSTPROCESSING ########
@@ -656,19 +546,6 @@ if __name__ == "__main__":
 
     t_postprocessing_end = time.perf_counter()
     elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
-
-    # save params in output
-    postprocessing_process = DataProcess(
-        name="Ephys postprocessing",
-        software_version=PIPELINE_VERSION,  # either release or git commit
-        start_date_time=datetime_start_postprocessing,
-        end_date_time=datetime_start_postprocessing + timedelta(seconds=np.floor(elapsed_time_postprocessing)),
-        input_location=str(data_folder),
-        output_location=str(results_folder),
-        code_url=PIPELINE_URL,
-        parameters=postprocessing_params,
-        notes=postprocessing_notes,
-    )
     print(f"POSTPROCESSING time: {elapsed_time_postprocessing}s")
 
     ###### CURATION ##############
@@ -712,23 +589,9 @@ if __name__ == "__main__":
         curation_notes += (
             f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
         )
-        print(f"\t{np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} units passing default QC")
 
     t_curation_end = time.perf_counter()
     elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
-
-    # save params in output
-    curation_process = DataProcess(
-        name="Ephys curation",
-        software_version=PIPELINE_VERSION,  # either release or git commit
-        start_date_time=datetime_start_curation,
-        end_date_time=datetime_start_curation + timedelta(seconds=np.floor(elapsed_time_curation)),
-        input_location=str(data_folder),
-        output_location=str(results_folder),
-        code_url=PIPELINE_URL,
-        parameters=curation_params,
-        notes=curation_notes,
-    )
     print(f"CURATION time: {elapsed_time_curation}s")
 
     ###### VISUALIZATION #########
@@ -792,9 +655,9 @@ if __name__ == "__main__":
             localize_peaks_node = LocalizeCenterOfMass(
                 recording,
                 radius_um=visualization_params["drift"]["localization"]["radius_um"],
-                parents=[extract_sparse_waveforms],
+                parents=[extract_sparse_waveforms_node],
             )
-            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms, localize_peaks]
+            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms_node, localize_peaks_node]
             peaks, peak_locations = run_node_pipeline(recording, pipeline_nodes=pipeline_nodes)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
@@ -945,11 +808,7 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
-                gh_path = f"{GH_CURATION_REPO}/{session_name}/{recording_name}/{sorter_name}/curation.json"
-                state = dict(sortingCuration=gh_path)
-                url = v_summary.url(
-                    label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary", state=state
-                )
+                url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary")
                 print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 
@@ -972,71 +831,18 @@ if __name__ == "__main__":
     # save vizualization output
     t_visualization_end = time.perf_counter()
     elapsed_time_visualization = np.round(t_visualization_end - t_visualization_start, 2)
-
-    visualization_process = DataProcess(
-        name="Ephys visualization",
-        software_version=PIPELINE_VERSION,  # either release or git commit
-        start_date_time=datetime_start_visualization,
-        end_date_time=datetime_start_visualization + timedelta(seconds=np.floor(elapsed_time_visualization)),
-        input_location=str(data_folder),
-        output_location=str(results_folder),
-        code_url=PIPELINE_URL,
-        parameters=visualization_params,
-        notes=visualization_notes,
-    )
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
-    # construct processing.json
-    ephys_data_processes = [
-        preprocessing_process,
-        spikesorting_process,
-        postprocessing_process,
-        curation_process,
-        visualization_process,
-    ]
-    processing_pipeline = PipelineProcess(
-        data_processes=ephys_data_processes,
-        processor_full_name=MAINTAINER,
-        pipeline_version=PIPELINE_VERSION,
-        pipeline_url=PIPELINE_URL,
+    # save processing files to output
+    processing_params = dict(
+        preprocessing=preprocessing_params,
+        sorting=sorting_params,
+        postprocessing=postprocessing_params,
+        curation=curation_params,
+        visualization=visualization_params,
     )
-    ephys_processing = Processing(processing_pipeline=processing_pipeline)
-
-    if processing is None:
-        processing = ephys_processing
-    else:
-        processing.data_processes.append(ephys_data_processes)
-
-    # save processing files to output
-    with (results_folder / "processing.json").open("w") as f:
-        f.write(processing.json(indent=3))
-
-    process_name = "sorted"
-    if data_description is not None:
-        upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade_data_description(platform=dd.Platform.ECEPHYS)
-        derived_data_description = dd.DerivedDataDescription.from_data_description(
-            upgraded_data_description, process_name=process_name
-        )
-    else:
-        now = datetime.now()
-        # make from scratch:
-        data_description_dict = {}
-        data_description_dict["creation_time"] = now.time()
-        data_description_dict["creation_date"] = now.date()
-        data_description_dict["input_data_name"] = session_name
-        data_description_dict["institution"] = dd.Institution.AIND
-        data_description_dict["investigators"] = []
-        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
-        data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        data_description_dict["platform"] = dd.Platform.ECEPHYS
-        data_description_dict["subject_id"] = subject_id
-
-        derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
-
-    # save processing files to output
-    with (results_folder / "data_description.json").open("w") as f:
-        f.write(derived_data_description.json(indent=3))
+    with (results_folder / "processing_params.json").open("w") as f:
+        json.dump(processing_params, f, indent=4)
 
     # remove tmp_folder
     shutil.rmtree(tmp_folder)
