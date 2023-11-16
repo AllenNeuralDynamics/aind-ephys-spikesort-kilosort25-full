@@ -111,9 +111,10 @@ qm_params = {
     },
     "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
     "synchrony": {"synchrony_sizes": (2, 4, 8)},
-    "nearest_neighbor": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4},
+    "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
     "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
     "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
+    "silhouette": {"method": ("simplified",)}
 }
 qm_metric_names = [
     "num_spikes",
@@ -133,6 +134,7 @@ qm_metric_names = [
     "l_ratio",
     "d_prime",
     "nearest_neighbor",
+    "silhouette"
 ]
 
 sparsity_params = dict(method="radius", radius_um=100)
