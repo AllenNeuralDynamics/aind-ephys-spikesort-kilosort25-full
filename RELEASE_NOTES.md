@@ -1,6 +1,6 @@
 # Release notes
 
-## v2.0 - Nov 15, 2023
+## v2.0 - Nov 17, 2023
 
 - update to `spikeinterface==0.99.1`
 - update to `aind-data-schema==0.17.1`
@@ -12,6 +12,7 @@
 - add protection against recordings without channel locations
 - dump preprocessed recording JSON to `preprocessed/` to easily reload processed object
 - use `UpgradeProcessing` to upgrade old processing schema models
+- Add nearest neighbor (and fix parameters) and silhouette metrics
 
 ### v1.9 - Oct 20, 2023
 
