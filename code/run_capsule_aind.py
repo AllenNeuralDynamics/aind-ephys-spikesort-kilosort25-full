@@ -27,9 +27,7 @@ import spikeinterface.postprocessing as spost
 import spikeinterface.qualitymetrics as sqm
 import spikeinterface.curation as sc
 import spikeinterface.widgets as sw
-from spikeinterface.sortingcomponents.peak_pipeline import ExtractDenseWaveforms
-from spikeinterface.sortingcomponents.peak_detection import detect_peaks
-from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
+
 import sortingview.views as vv
 
 
@@ -37,6 +35,7 @@ import sortingview.views as vv
 import aind_data_schema.data_description as dd
 from aind_data_schema.processing import DataProcess, Processing, PipelineProcess
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
+from aind_data_schema.schema_upgrade.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
 # LOCAL
 from version import version as __version__
@@ -45,7 +44,7 @@ matplotlib.use("agg")
 
 GH_CURATION_REPO = "gh://AllenNeuralDynamics/ephys-sorting-manual-curation/main"
 PIPELINE_URL = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-kilosort25-full.git"
-MAINTAINER = "Alessio Buccino"
+PIPELINE_MAINTAINER = "Alessio Buccino"
 
 # Retrieve pipeline version
 PIPELINE_VERSION = __version__
@@ -56,6 +55,7 @@ job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
 
 preprocessing_params = dict(
     preprocessing_strategy="cmr",  # 'destripe' or 'cmr'
+    min_preprocessing_duration=120,  # if less than this duration, processing is skipped (probably a test recording)
     highpass_filter=dict(freq_min=300.0, margin_ms=5.0),
     phase_shift=dict(margin_ms=100.0),
     detect_bad_channels=dict(
@@ -103,9 +103,18 @@ qm_params = {
         "amplitudes_bins_min_ratio": 5,
     },
     "amplitude_median": {"peak_sign": "neg"},
-    "nearest_neighbor": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4},
+    "amplitude_cv": {
+        "average_num_spikes_per_bin": 50,
+        "percentiles": (5, 95),
+        "min_num_bins": 10,
+        "amplitude_extension": "spike_amplitudes",
+    },
+    "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
+    "synchrony": {"synchrony_sizes": (2, 4, 8)},
+    "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
     "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
     "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
+    "silhouette": {"method": ("simplified",)}
 }
 qm_metric_names = [
     "num_spikes",
@@ -116,10 +125,16 @@ qm_metric_names = [
     "rp_violation",
     "sliding_rp_violation",
     "amplitude_cutoff",
+    "amplitude_median",
+    "amplitude_cv",
+    "synchrony",
+    "firing_range",
     "drift",
     "isolation_distance",
     "l_ratio",
     "d_prime",
+    "nearest_neighbor",
+    "silhouette"
 ]
 
 sparsity_params = dict(method="radius", radius_um=100)
@@ -132,6 +147,7 @@ postprocessing_params = dict(
         max_spikes_per_unit=100,
         return_scaled=False,
         dtype=None,
+        sparse=False,
         precompute_template=("average",),
         use_relative_path=True,
     ),
@@ -151,15 +167,15 @@ postprocessing_params = dict(
     ),
     similarity=dict(method="cosine_similarity"),
     correlograms=dict(
-        window_ms=100.0,
-        bin_ms=2.0,
+        window_ms=50.0,
+        bin_ms=1.0,
     ),
     isis=dict(
         window_ms=100.0,
         bin_ms=5.0,
     ),
     locations=dict(method="monopolar_triangulation"),
-    template_metrics=dict(upsampling_factor=10, sparsity=None),
+    template_metrics=dict(upsampling_factor=10, sparsity=None, include_multi_channel_metrics=True),
     principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
     quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
 )
@@ -174,8 +190,8 @@ curation_params = dict(
 visualization_params = dict(
     timeseries=dict(n_snippets_per_segment=2, snippet_duration_s=0.5, skip=False),
     drift=dict(
-        detection=dict(method="locally_exclusive", peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
-        localization=dict(ms_before=0.1, ms_after=0.3, local_radius_um=100.0),
+        detection=dict(peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
+        localization=dict(ms_before=0.1, ms_after=0.3, radius_um=100.0),
         n_skip=30,
         alpha=0.15,
         vmin=-200,
@@ -305,7 +321,9 @@ if __name__ == "__main__":
 
     ####### PREPROCESSING #######
     print("\n\nPREPROCESSING")
-    preprocessed_output_folder = tmp_folder / "preprocessed"
+    preprocessed_tmp_folder = tmp_folder / "preprocessed"
+    preprocessed_output_folder = results_folder / "preprocessed"
+    preprocessed_output_folder.mkdir(exist_ok=True)
 
     datetime_start_preproc = datetime.now()
     t_preprocessing_start = time.perf_counter()
@@ -341,98 +359,130 @@ if __name__ == "__main__":
                     recordings = si.split_recording(recording)
 
                 for i_r, recording in enumerate(recordings):
+                    skip_processing = False
                     if CONCAT:
                         recording_name = f"{exp_stream_name}_recording"
                     else:
                         recording_name = f"{exp_stream_name}_recording{i_r + 1}"
+
                     preprocessing_vizualization_data[recording_name] = {}
                     preprocessing_vizualization_data[recording_name]["timeseries"] = {}
                     recording_names.append(recording_name)
                     print(f"Preprocessing recording: {recording_name}")
                     print(f"\tDuration: {np.round(recording.get_total_duration(), 2)} s")
 
-                    recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
+                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"] = dict(raw=recording)
+                    # maybe a recording is from a different source and it doesn't need to be phase shifted
+                    if "inter_sample_shift" in recording.get_property_keys():
+                        recording_ps_full = spre.phase_shift(recording, **preprocessing_params["phase_shift"])
+                        preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
+                            dict(phase_shift=recording_ps_full)
+                        )
+                    else:
+                        recording_ps_full = recording
 
                     recording_hp_full = spre.highpass_filter(
                         recording_ps_full, **preprocessing_params["highpass_filter"]
                     )
-                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"] = dict(
-                        raw=recording, phase_shift=recording_ps_full, highpass=recording_hp_full
+                    preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
+                        dict(highpass=recording_hp_full)
                     )
 
-                    # IBL bad channel detection
-                    _, channel_labels = spre.detect_bad_channels(
-                        recording_hp_full, **preprocessing_params["detect_bad_channels"]
-                    )
-                    dead_channel_mask = channel_labels == "dead"
-                    noise_channel_mask = channel_labels == "noise"
-                    out_channel_mask = channel_labels == "out"
-                    print(f"\tBad channel detection:")
-                    print(
-                        f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}"
-                    )
-                    dead_channel_ids = recording_hp_full.channel_ids[dead_channel_mask]
-                    noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
-                    out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
-
-                    all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
-
-                    skip_processing = False
-                    max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-                    if len(all_bad_channel_ids) >= int(
-                        max_bad_channel_fraction_to_remove * recording.get_num_channels()
+                    if (
+                        recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"]
+                        and not DEBUG
                     ):
                         print(
-                            f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
-                            f"Skipping further processing for this recording."
+                            f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing"
                         )
+                        preprocessing_notes += f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
+                        skip_processing = True
+                    if not recording.has_channel_location():
+                        print(f"\tRecording does not have channel locations. Skipping further processing")
                         preprocessing_notes += (
-                            f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
+                            f"\n- Recording does not have channel locations. Skipping further processing\n"
                         )
                         skip_processing = True
+
+                    if not skip_processing:
+                        # IBL bad channel detection
+                        _, channel_labels = spre.detect_bad_channels(
+                            recording_hp_full, **preprocessing_params["detect_bad_channels"]
+                        )
+                        dead_channel_mask = channel_labels == "dead"
+                        noise_channel_mask = channel_labels == "noise"
+                        out_channel_mask = channel_labels == "out"
+                        print(f"\tBad channel detection:")
+                        print(
+                            f"\t\t- dead channels - {np.sum(dead_channel_mask)}\n\t\t- noise channels - {np.sum(noise_channel_mask)}\n\t\t- out channels - {np.sum(out_channel_mask)}"
+                        )
+                        dead_channel_ids = recording_hp_full.channel_ids[dead_channel_mask]
+                        noise_channel_ids = recording_hp_full.channel_ids[noise_channel_mask]
+                        out_channel_ids = recording_hp_full.channel_ids[out_channel_mask]
+
+                        all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
+
+                        max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
+                        if len(all_bad_channel_ids) >= int(
+                            max_bad_channel_fraction_to_remove * recording.get_num_channels()
+                        ):
+                            print(
+                                f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
+                                f"Skipping further processing for this recording."
+                            )
+                            preprocessing_notes += (
+                                f"\n- Found {len(all_bad_channel_ids)} bad channels. Skipping further processing\n"
+                            )
+                            skip_processing = True
+                        else:
+                            if preprocessing_params["remove_out_channels"]:
+                                print(f"\tRemoving {len(out_channel_ids)} out channels")
+                                recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
+                                preprocessing_notes += (
+                                    f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
+                                )
+                            else:
+                                recording_rm_out = recording_hp_full
+
+                            recording_processed_cmr = spre.common_reference(
+                                recording_rm_out, **preprocessing_params["common_reference"]
+                            )
+
+                            bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
+                            recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
+                            recording_hp_spatial = spre.highpass_spatial_filter(
+                                recording_interp, **preprocessing_params["highpass_spatial_filter"]
+                            )
+                            preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
+                                highpass=recording_rm_out,
+                                cmr=recording_processed_cmr,
+                                highpass_spatial=recording_hp_spatial,
+                            )
+
+                            preproc_strategy = preprocessing_params["preprocessing_strategy"]
+                            if preproc_strategy == "cmr":
+                                recording_processed = recording_processed_cmr
+                            else:
+                                recording_processed = recording_hp_spatial
+
+                            if preprocessing_params["remove_bad_channels"]:
+                                print(
+                                    f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing"
+                                )
+                                recording_processed = recording_processed.remove_channels(bad_channel_ids)
+                                preprocessing_notes += (
+                                    f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
+                                )
+                            recording_saved = recording_processed.save(
+                                folder=preprocessed_tmp_folder / recording_name
+                            )
+                            recording_processed.dump_to_json(preprocessed_output_folder / f"{recording_name}.json", relative_to=data_folder)
+                            recording_drift = recording_saved
+
+                    if skip_processing:
                         # in this case, processed timeseries will not be visualized
                         preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = None
                         recording_drift = recording_hp_full
-                    else:
-                        if preprocessing_params["remove_out_channels"]:
-                            print(f"\tRemoving {len(out_channel_ids)} out channels")
-                            recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                            preprocessing_notes += (
-                                f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
-                            )
-                        else:
-                            recording_rm_out = recording_hp_full
-
-                        recording_processed_cmr = spre.common_reference(
-                            recording_rm_out, **preprocessing_params["common_reference"]
-                        )
-
-                        bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids))
-                        recording_interp = spre.interpolate_bad_channels(recording_rm_out, bad_channel_ids)
-                        recording_hp_spatial = spre.highpass_spatial_filter(
-                            recording_interp, **preprocessing_params["highpass_spatial_filter"]
-                        )
-                        preprocessing_vizualization_data[recording_name]["timeseries"]["proc"] = dict(
-                            highpass=recording_rm_out,
-                            cmr=recording_processed_cmr,
-                            highpass_spatial=recording_hp_spatial,
-                        )
-
-                        preproc_strategy = preprocessing_params["preprocessing_strategy"]
-                        if preproc_strategy == "cmr":
-                            recording_processed = recording_processed_cmr
-                        else:
-                            recording_processed = recording_hp_spatial
-
-                        if preprocessing_params["remove_bad_channels"]:
-                            print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
-                            recording_processed = recording_processed.remove_channels(bad_channel_ids)
-                            preprocessing_notes += (
-                                f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
-                            )
-                        recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
-                        recording_drift = recording_saved
-
                     # store recording for drift visualization
                     preprocessing_vizualization_data[recording_name]["drift"] = dict(recording=recording_drift)
 
@@ -460,7 +510,7 @@ if __name__ == "__main__":
 
     datetime_start_sorting = datetime.now()
     t_sorting_start = time.perf_counter()
-    preprocessed_folder = preprocessed_output_folder
+    preprocessed_folder = preprocessed_tmp_folder
 
     # try results here
     spikesorted_raw_output_folder = scratch_folder / "spikesorted_raw"
@@ -649,7 +699,6 @@ if __name__ == "__main__":
 
     # loop through block-streams
     for recording_name in recording_names:
-
         recording_folder = postprocessed_folder / recording_name
         if not recording_folder.is_dir():
             print(f"Skipping curation for recording: {recording_name}")
@@ -701,9 +750,6 @@ if __name__ == "__main__":
     # loop through block-streams
     for recording_name in recording_names:
         recording_folder = postprocessed_folder / recording_name
-        if not recording_folder.is_dir():
-            print(f"\tSkipping sorting visualization for recording: {recording_name}")
-            continue
         print(f"Visualizing recording: {recording_name}")
 
         if recording_name not in visualization_output:
@@ -718,7 +764,7 @@ if __name__ == "__main__":
         alpha = visualization_params["drift"]["alpha"]
 
         # use spike locations
-        if postprocessed_folder.is_dir():
+        if recording_folder.is_dir():
             print(f"\tVisualizing drift maps using spike sorted data")
             we = si.load_waveforms(recording_folder)
             recording = we.recording
@@ -727,25 +773,38 @@ if __name__ == "__main__":
             peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
         # otherwise etect peaks
         else:
+            from spikeinterface.core.node_pipeline import ExtractSparseWaveforms, run_node_pipeline
+            from spikeinterface.sortingcomponents.peak_detection import DetectPeakLocallyExclusive
+            from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
+
             print(f"\tVisualizing drift maps using detected peaks (no spike sorting available)")
             # locally_exclusive + pipeline steps LocalizeCenterOfMass + PeakToPeakFeature
             drift_data = preprocessing_vizualization_data[recording_name]["drift"]
             recording = drift_data["recording"]
-            extract_dense_waveforms = ExtractDenseWaveforms(
+
+            if not recording.has_channel_location():
+                print(
+                    f"\tSkipping drift and timeseries visualization for recording: {recording_name}. No channel locations."
+                )
+                continue
+
+            # Here we use the node pipeline implementation
+            peak_detector_node = DetectPeakLocallyExclusive(recording, **visualization_params["drift"]["detection"])
+            extract_sparse_waveforms_node = ExtractSparseWaveforms(
                 recording,
                 ms_before=visualization_params["drift"]["localization"]["ms_before"],
                 ms_after=visualization_params["drift"]["localization"]["ms_after"],
+                radius_um=visualization_params["drift"]["localization"]["radius_um"],
+                parents=[peak_detector_node],
                 return_output=False,
             )
-            localize_peaks = LocalizeCenterOfMass(
+            localize_peaks_node = LocalizeCenterOfMass(
                 recording,
-                local_radius_um=visualization_params["drift"]["localization"]["local_radius_um"],
-                parents=[extract_dense_waveforms],
+                radius_um=visualization_params["drift"]["localization"]["radius_um"],
+                parents=[extract_sparse_waveforms_node],
             )
-            pipeline_nodes = [extract_dense_waveforms, localize_peaks]
-            peaks, peak_locations = detect_peaks(
-                recording, pipeline_nodes=pipeline_nodes, **visualization_params["drift"]["detection"]
-            )
+            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms_node, localize_peaks_node]
+            peaks, peak_locations = run_node_pipeline(recording, pipeline_nodes=pipeline_nodes)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
@@ -864,6 +923,9 @@ if __name__ == "__main__":
                 print(f"Something wrong when visualizing timeseries: {e}")
 
         # sorting summary
+        if not recording_folder.is_dir():
+            print(f"\tSkipping sorting summary visualization for recording: {recording_name}. No sorting data.")
+            continue
         print(f"\tVisualizing sorting summary")
         we = si.load_waveforms(recording_folder)
         sorting_precurated = si.load_extractor(results_folder / "sorting_precurated" / recording_name)
@@ -941,18 +1003,22 @@ if __name__ == "__main__":
         curation_process,
         visualization_process,
     ]
-    processing_pipeline = PipelineProcess(
-        data_processes=ephys_data_processes,
-        processor_full_name=MAINTAINER,
-        pipeline_version=PIPELINE_VERSION,
-        pipeline_url=PIPELINE_URL,
-    )
-    ephys_processing = Processing(processing_pipeline=processing_pipeline)
 
-    if processing is None:
-        processing = ephys_processing
+    if (session / "processing.json").is_file():
+        with open(session / "processing.json", "r") as processing_file:
+            processing_dict = json.load(processing_file)
+        # Allow for parsing earlier versions of Processing files
+        processing_old = Processing.construct(**processing_dict)
+        processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINTAINER)
+        processing.processing_pipeline.data_processes.append(ephys_data_processes)
     else:
-        processing.data_processes.append(ephys_data_processes)
+        processing_pipeline = PipelineProcess(
+            data_processes=ephys_data_processes,
+            processor_full_name=PIPELINE_MAINTAINER,
+            pipeline_url=PIPELINE_URL,
+            pipeline_version=PIPELINE_VERSION
+        )
+        processing = Processing(processing_pipeline=processing_pipeline)
 
     # save processing files to output
     with (results_folder / "processing.json").open("w") as f:
@@ -961,7 +1027,7 @@ if __name__ == "__main__":
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade_data_description(platform=dd.Platform.ECEPHYS)
+        upgraded_data_description = upgrader.upgrade(platform=dd.Platform.ECEPHYS)
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
