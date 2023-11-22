@@ -212,20 +212,29 @@ if __name__ == "__main__":
     kachery_zone = os.getenv("KACHERY_ZONE", None)
     print(f"Kachery Zone: {kachery_zone}")
 
-    if len(sys.argv) == 5:
+    if len(sys.argv) == 7:
         PREPROCESSING_STRATEGY = sys.argv[1]
-
         if sys.argv[2] == "true":
+            REMOVE_OUT_CHANNELS = True
+        else:
+            REMOVE_OUT_CHANNELS = False
+        if sys.argv[3] == "true":
+            REMOVE_BAD_CHANNELS = True
+        else:
+            REMOVE_BAD_CHANNELS = False
+        if sys.argv[4] == "true":
             DEBUG = True
         else:
             DEBUG = False
-        DEBUG_DURATION = float(sys.argv[3]) if DEBUG else None
-        if sys.argv[4] == "true":
+        DEBUG_DURATION = float(sys.argv[5]) if DEBUG else None
+        if sys.argv[6] == "true":
             CONCAT = True
         else:
             CONCAT = False
     else:
         PREPROCESSING_STRATEGY = "cmr"
+        REMOVE_OUT_CHANNELS = True
+        REMOVE_BAD_CHANNELS = True
         DEBUG = False
         DEBUG_DURATION = False
         CONCAT = False
@@ -235,6 +244,8 @@ if __name__ == "__main__":
         "destripe",
     ], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
     preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
+    preprocessing_params["remove_out_channels"] = REMOVE_OUT_CHANNELS
+    preprocessing_params["remove_bad_channels"] = REMOVE_BAD_CHANNELS
 
     if DEBUG:
         print("DEBUG ENABLED")
@@ -625,9 +636,9 @@ if __name__ == "__main__":
             peaks = we.sorting.to_spike_vector()
             peak_locations = we.load_extension("spike_locations").get_data()
             peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
-        # otherwise etect peaks
+        # otherwise detect peaks
         else:
-            from spikeinterface.core.node_pipeline import ExtractSparseWaveforms, run_node_pipeline
+            from spikeinterface.core.node_pipeline import ExtractDenseWaveforms, run_node_pipeline
             from spikeinterface.sortingcomponents.peak_detection import DetectPeakLocallyExclusive
             from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
 
@@ -644,21 +655,22 @@ if __name__ == "__main__":
 
             # Here we use the node pipeline implementation
             peak_detector_node = DetectPeakLocallyExclusive(recording, **visualization_params["drift"]["detection"])
-            extract_sparse_waveforms_node = ExtractSparseWaveforms(
+            extract_dense_waveforms_node = ExtractDenseWaveforms(
                 recording,
                 ms_before=visualization_params["drift"]["localization"]["ms_before"],
                 ms_after=visualization_params["drift"]["localization"]["ms_after"],
-                radius_um=visualization_params["drift"]["localization"]["radius_um"],
                 parents=[peak_detector_node],
                 return_output=False,
             )
             localize_peaks_node = LocalizeCenterOfMass(
                 recording,
                 radius_um=visualization_params["drift"]["localization"]["radius_um"],
-                parents=[extract_sparse_waveforms_node],
+                parents=[peak_detector_node, extract_dense_waveforms_node],
             )
-            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms_node, localize_peaks_node]
-            peaks, peak_locations = run_node_pipeline(recording, pipeline_nodes=pipeline_nodes)
+            pipeline_nodes = [peak_detector_node, extract_dense_waveforms_node, localize_peaks_node]
+            peaks, peak_locations = run_node_pipeline(
+                recording, pipeline_nodes=pipeline_nodes, job_kwargs=si.get_global_job_kwargs()
+            )
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
