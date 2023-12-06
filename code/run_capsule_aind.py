@@ -794,7 +794,6 @@ if __name__ == "__main__":
                 recording,
                 ms_before=visualization_params["drift"]["localization"]["ms_before"],
                 ms_after=visualization_params["drift"]["localization"]["ms_after"],
-                radius_um=visualization_params["drift"]["localization"]["radius_um"],
                 parents=[peak_detector_node],
                 return_output=False,
             )
