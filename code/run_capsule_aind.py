@@ -773,7 +773,7 @@ if __name__ == "__main__":
             peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
         # otherwise etect peaks
         else:
-            from spikeinterface.core.node_pipeline import ExtractSparseWaveforms, run_node_pipeline
+            from spikeinterface.core.node_pipeline import ExtractDenseWaveforms, run_node_pipeline
             from spikeinterface.sortingcomponents.peak_detection import DetectPeakLocallyExclusive
             from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
 
@@ -790,21 +790,20 @@ if __name__ == "__main__":
 
             # Here we use the node pipeline implementation
             peak_detector_node = DetectPeakLocallyExclusive(recording, **visualization_params["drift"]["detection"])
-            extract_sparse_waveforms_node = ExtractSparseWaveforms(
+            extract_dense_waveforms_node = ExtractDenseWaveforms(
                 recording,
                 ms_before=visualization_params["drift"]["localization"]["ms_before"],
                 ms_after=visualization_params["drift"]["localization"]["ms_after"],
-                radius_um=visualization_params["drift"]["localization"]["radius_um"],
                 parents=[peak_detector_node],
                 return_output=False,
             )
             localize_peaks_node = LocalizeCenterOfMass(
                 recording,
                 radius_um=visualization_params["drift"]["localization"]["radius_um"],
-                parents=[extract_sparse_waveforms_node],
+                parents=[peak_detector_node, extract_dense_waveforms_node],
             )
-            pipeline_nodes = [peak_detector_node, extract_sparse_waveforms_node, localize_peaks_node]
-            peaks, peak_locations = run_node_pipeline(recording, pipeline_nodes=pipeline_nodes)
+            pipeline_nodes = [peak_detector_node, extract_dense_waveforms_node, localize_peaks_node]
+            peaks, peak_locations = run_node_pipeline(recording, nodes=pipeline_nodes, job_kwargs=job_kwargs)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
