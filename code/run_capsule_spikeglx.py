@@ -695,9 +695,7 @@ if __name__ == "__main__":
                 parents=[peak_detector_node, extract_dense_waveforms_node],
             )
             pipeline_nodes = [peak_detector_node, extract_dense_waveforms_node, localize_peaks_node]
-            peaks, peak_locations = run_node_pipeline(
-                recording, pipeline_nodes=pipeline_nodes, job_kwargs=si.get_global_job_kwargs()
-            )
+            peaks, peak_locations = run_node_pipeline(recording, nodes=pipeline_nodes, job_kwargs=job_kwargs)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
