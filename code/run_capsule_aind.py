@@ -222,7 +222,7 @@ if __name__ == "__main__":
     kachery_zone = os.getenv("KACHERY_ZONE", None)
     print(f"Kachery Zone: {kachery_zone}")
 
-    if len(sys.argv) == 7:
+    if len(sys.argv) == 8:
         PREPROCESSING_STRATEGY = sys.argv[1]
         if sys.argv[2] == "true":
             REMOVE_OUT_CHANNELS = True
@@ -232,12 +232,13 @@ if __name__ == "__main__":
             REMOVE_BAD_CHANNELS = True
         else:
             REMOVE_BAD_CHANNELS = False
-        if sys.argv[4] == "true":
+        MAX_BAD_CHANNEL_FRACTION = float(sys.argv[4])
+        if sys.argv[5] == "true":
             DEBUG = True
         else:
             DEBUG = False
-        DEBUG_DURATION = float(sys.argv[5]) if DEBUG else None
-        if sys.argv[6] == "true":
+        DEBUG_DURATION = float(sys.argv[6]) if DEBUG else None
+        if sys.argv[7] == "true":
             CONCAT = True
         else:
             CONCAT = False
@@ -245,6 +246,7 @@ if __name__ == "__main__":
         PREPROCESSING_STRATEGY = "cmr"
         REMOVE_OUT_CHANNELS = True
         REMOVE_BAD_CHANNELS = True
+        MAX_BAD_CHANNEL_FRACTION = 0.5
         DEBUG = False
         DEBUG_DURATION = False
         CONCAT = False
@@ -256,6 +258,7 @@ if __name__ == "__main__":
     preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
     preprocessing_params["remove_out_channels"] = REMOVE_OUT_CHANNELS
     preprocessing_params["remove_bad_channels"] = REMOVE_BAD_CHANNELS
+    preprocessing_params["max_bad_channel_fraction_to_remove"] = MAX_BAD_CHANNEL_FRACTION
 
     if DEBUG:
         print("DEBUG ENABLED")
@@ -814,9 +817,7 @@ if __name__ == "__main__":
                 parents=[peak_detector_node, extract_dense_waveforms_node],
             )
             pipeline_nodes = [peak_detector_node, extract_dense_waveforms_node, localize_peaks_node]
-            peaks, peak_locations = run_node_pipeline(
-                recording, pipeline_nodes=pipeline_nodes, job_kwargs=si.get_global_job_kwargs()
-            )
+            peaks, peak_locations = run_node_pipeline(recording, nodes=pipeline_nodes, job_kwargs=job_kwargs)
             print(f"\tDetected {len(peaks)} peaks")
             peak_amps = peaks["amplitude"]
 
@@ -1044,20 +1045,22 @@ if __name__ == "__main__":
             upgraded_data_description, process_name=process_name
         )
     else:
-        now = datetime.now()
         # make from scratch:
         data_description_dict = {}
-        data_description_dict["creation_time"] = now.time()
-        data_description_dict["creation_date"] = now.date()
-        data_description_dict["input_data_name"] = session_name
+        data_description_dict["creation_time"] = datetime.now()
+        data_description_dict["name"] = session_name
         data_description_dict["institution"] = dd.Institution.AIND
+        data_description_dict["data_level"] = dd.DataLevel.RAW
         data_description_dict["investigators"] = []
         data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
         data_description_dict["modality"] = [dd.Modality.ECEPHYS]
         data_description_dict["platform"] = dd.Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
-
-        derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
+        data_description = dd.DataDescription(**data_description_dict)
+        
+        derived_data_description = dd.DerivedDataDescription.from_data_description(
+            data_description=data_description, process_name=process_name
+        )
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
