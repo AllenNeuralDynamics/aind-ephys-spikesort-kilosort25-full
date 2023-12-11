@@ -1,5 +1,9 @@
 # Release notes
 
+### v2.2 - Dec 11, 2023
+
+- fix creation of `DerivedDataDescription` from scratch
+
 ### v2.1 - Dec 7, 2023
 
 - fix visualization of drift map for short recordings using peak pipeline

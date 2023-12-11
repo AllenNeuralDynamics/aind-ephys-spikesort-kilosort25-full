@@ -1031,20 +1031,22 @@ if __name__ == "__main__":
             upgraded_data_description, process_name=process_name
         )
     else:
-        now = datetime.now()
         # make from scratch:
         data_description_dict = {}
-        data_description_dict["creation_time"] = now.time()
-        data_description_dict["creation_date"] = now.date()
-        data_description_dict["input_data_name"] = session_name
+        data_description_dict["creation_time"] = datetime.now()
+        data_description_dict["name"] = session_name
         data_description_dict["institution"] = dd.Institution.AIND
+        data_description_dict["data_level"] = dd.DataLevel.RAW
         data_description_dict["investigators"] = []
         data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
         data_description_dict["modality"] = [dd.Modality.ECEPHYS]
         data_description_dict["platform"] = dd.Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
-
-        derived_data_description = dd.DerivedDataDescription(process_name=process_name, **data_description_dict)
+        data_description = dd.DataDescription(**data_description_dict)
+        
+        derived_data_description = dd.DerivedDataDescription.from_data_description(
+            data_description=data_description, process_name=process_name
+        )
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
