@@ -234,6 +234,7 @@ if __name__ == "__main__":
         else:
             CONCAT = False
     else:
+        PREPROCESSING_STRATEGY = "cmr"
         DEBUG = False
         DEBUG_DURATION = False
         CONCAT = False
