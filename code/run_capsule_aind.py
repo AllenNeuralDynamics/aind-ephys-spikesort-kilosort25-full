@@ -222,31 +222,18 @@ if __name__ == "__main__":
     kachery_zone = os.getenv("KACHERY_ZONE", None)
     print(f"Kachery Zone: {kachery_zone}")
 
-    if len(sys.argv) == 8:
+    if len(sys.argv) == 5:
         PREPROCESSING_STRATEGY = sys.argv[1]
         if sys.argv[2] == "true":
-            REMOVE_OUT_CHANNELS = True
-        else:
-            REMOVE_OUT_CHANNELS = False
-        if sys.argv[3] == "true":
-            REMOVE_BAD_CHANNELS = True
-        else:
-            REMOVE_BAD_CHANNELS = False
-        MAX_BAD_CHANNEL_FRACTION = float(sys.argv[4])
-        if sys.argv[5] == "true":
             DEBUG = True
         else:
             DEBUG = False
-        DEBUG_DURATION = float(sys.argv[6]) if DEBUG else None
-        if sys.argv[7] == "true":
+        DEBUG_DURATION = float(sys.argv[3]) if DEBUG else None
+        if sys.argv[4] == "true":
             CONCAT = True
         else:
             CONCAT = False
     else:
-        PREPROCESSING_STRATEGY = "cmr"
-        REMOVE_OUT_CHANNELS = True
-        REMOVE_BAD_CHANNELS = True
-        MAX_BAD_CHANNEL_FRACTION = 0.5
         DEBUG = False
         DEBUG_DURATION = False
         CONCAT = False
@@ -256,9 +243,6 @@ if __name__ == "__main__":
         "destripe",
     ], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
     preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
-    preprocessing_params["remove_out_channels"] = REMOVE_OUT_CHANNELS
-    preprocessing_params["remove_bad_channels"] = REMOVE_BAD_CHANNELS
-    preprocessing_params["max_bad_channel_fraction_to_remove"] = MAX_BAD_CHANNEL_FRACTION
 
     if DEBUG:
         print("DEBUG ENABLED")
