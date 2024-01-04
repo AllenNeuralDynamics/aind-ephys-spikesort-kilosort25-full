@@ -301,7 +301,7 @@ if __name__ == "__main__":
     # APPLY_MOTION = True if motion_arg == "apply" else False
 
     print(f"Running preprocessing with the following parameters:")
-    print(f"\CONCATENATE: {CONCAT}")
+    print(f"\tCONCATENATE: {CONCAT}")
     print(f"\tDENOISING_STRATEGY: {DENOISING_STRATEGY}")
     print(f"\tREMOVE_OUT_CHANNELS: {REMOVE_OUT_CHANNELS}")
     print(f"\tREMOVE_BAD_CHANNELS: {REMOVE_BAD_CHANNELS}")
