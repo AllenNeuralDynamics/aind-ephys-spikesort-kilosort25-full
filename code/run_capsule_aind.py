@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # GENERAL IMPORTS
 import os
+import argparse
 import numpy as np
 from pathlib import Path
 import shutil
@@ -32,8 +33,17 @@ import sortingview.views as vv
 
 
 # AIND
-import aind_data_schema.data_description as dd
-from aind_data_schema.processing import DataProcess, Processing, PipelineProcess
+from aind_data_schema.core.data_description import (
+    DataDescription,
+    DerivedDataDescription,
+    Institution,
+    Modality,
+    Modality,
+    Platform,
+    Funding,
+    DataLevel,
+)
+from aind_data_schema.core.processing import DataProcess, Processing, PipelineProcess
 from aind_data_schema.schema_upgrade.data_description_upgrade import DataDescriptionUpgrade
 from aind_data_schema.schema_upgrade.processing_upgrade import ProcessingUpgrade, DataProcessUpgrade
 
@@ -53,8 +63,66 @@ PIPELINE_VERSION = __version__
 n_jobs = os.cpu_count()
 job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
 
+
+### ARGPARSE ###
+parser = argparse.ArgumentParser(description="AIND processing ephys pipeline")
+
+debug_group = parser.add_mutually_exclusive_group()
+debug_help = "Whether to run in DEBUG mode"
+debug_group.add_argument("--debug", action="store_true", help=debug_help)
+debug_group.add_argument("static_debug", nargs="?", default="false", help=debug_help)
+
+concat_group = parser.add_mutually_exclusive_group()
+concat_help = "Whether to concatenate recordings (segments) or not. Default: False"
+concat_group.add_argument("--concatenate", action="store_true", help=concat_help)
+concat_group.add_argument("static_concatenate", nargs="?", default="false", help=concat_help)
+
+denoising_group = parser.add_mutually_exclusive_group()
+denoising_help = "Which denoising strategy to use. Can be 'cmr' or 'destripe'"
+denoising_group.add_argument("--denoising", choices=["cmr", "destripe"], help=denoising_help)
+denoising_group.add_argument("static_denoising", nargs="?", default="cmr", help=denoising_help)
+
+remove_out_channels_group = parser.add_mutually_exclusive_group()
+remove_out_channels_help = "Whether to remove out channels"
+remove_out_channels_group.add_argument("--no-remove-out-channels", action="store_true", help=remove_out_channels_help)
+remove_out_channels_group.add_argument(
+    "static_remove_out_channels", nargs="?", default="true", help=remove_out_channels_help
+)
+
+remove_bad_channels_group = parser.add_mutually_exclusive_group()
+remove_bad_channels_help = "Whether to remove bad channels"
+remove_bad_channels_group.add_argument("--no-remove-bad-channels", action="store_true", help=remove_bad_channels_help)
+remove_bad_channels_group.add_argument(
+    "static_remove_bad_channels", nargs="?", default="true", help=remove_bad_channels_help
+)
+
+max_bad_channel_fraction_group = parser.add_mutually_exclusive_group()
+max_bad_channel_fraction_help = (
+    "Maximum fraction of bad channels to remove. If more than this fraction, processing is skipped"
+)
+max_bad_channel_fraction_group.add_argument(
+    "--max-bad-channel-fraction", default=0.5, help=max_bad_channel_fraction_help
+)
+max_bad_channel_fraction_group.add_argument(
+    "static_max_bad_channel_fraction", nargs="?", default="0.5", help=max_bad_channel_fraction_help
+)
+
+debug_duration_group = parser.add_mutually_exclusive_group()
+debug_duration_help = (
+    "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
+)
+debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
+debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
+
+# TODO: add motion correction
+# motion_correction_group = parser.add_mutually_exclusive_group()
+# motion_correction_help = "How to deal with motion correction. Can be 'skip', 'compute', or 'apply'"
+# motion_correction_group.add_argument("--motion", choices=["skip", "compute", "apply"], help=motion_correction_help)
+# motion_correction_group.add_argument("static_motion", nargs="?", default="compute", help=motion_correction_help)
+
+## PARAMS ##
 preprocessing_params = dict(
-    preprocessing_strategy="cmr",  # 'destripe' or 'cmr'
+    denoising_strategy="cmr",  # 'destripe' or 'cmr'
     min_preprocessing_duration=120,  # if less than this duration, processing is skipped (probably a test recording)
     highpass_filter=dict(freq_min=300.0, margin_ms=5.0),
     phase_shift=dict(margin_ms=100.0),
@@ -68,7 +136,7 @@ preprocessing_params = dict(
     ),
     remove_out_channels=True,
     remove_bad_channels=True,
-    max_bad_channel_fraction_to_remove=0.5,
+    max_bad_channel_fraction=0.5,  # above this fraction, processing is skipped
     common_reference=dict(reference="global", operator="median"),
     highpass_spatial_filter=dict(
         n_channel_pad=60,
@@ -114,7 +182,7 @@ qm_params = {
     "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
     "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
     "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
-    "silhouette": {"method": ("simplified",)}
+    "silhouette": {"method": ("simplified",)},
 }
 qm_metric_names = [
     "num_spikes",
@@ -134,7 +202,7 @@ qm_metric_names = [
     "l_ratio",
     "d_prime",
     "nearest_neighbor",
-    "silhouette"
+    "silhouette",
 ]
 
 sparsity_params = dict(method="radius", radius_um=100)
@@ -208,7 +276,7 @@ scratch_folder = Path("../scratch")
 tmp_folder = results_folder / "tmp"
 if tmp_folder.is_dir():
     shutil.rmtree(tmp_folder)
-tmp_folder.mkdir()
+tmp_folder.mkdir(parents=True)
 
 visualization_output = {}
 
@@ -216,38 +284,34 @@ visualization_output = {}
 if __name__ == "__main__":
     datetime_now = datetime.now()
     t_global_start = time.perf_counter()
-    # SET DEFAULT JOB KWARGS
-    si.set_global_job_kwargs(**job_kwargs)
 
-    kachery_zone = os.getenv("KACHERY_ZONE", None)
-    print(f"Kachery Zone: {kachery_zone}")
+    args = parser.parse_args()
 
-    if len(sys.argv) == 5:
-        PREPROCESSING_STRATEGY = sys.argv[1]
+    DEBUG = args.debug or args.static_debug == "true"
+    CONCAT = args.concatenate or args.static_concatenate.lower() == "true"
+    DENOISING_STRATEGY = args.denoising or args.static_denoising
+    REMOVE_OUT_CHANNELS = False if args.no_remove_out_channels else args.static_remove_out_channels == "true"
+    REMOVE_BAD_CHANNELS = False if args.no_remove_bad_channels else args.static_remove_bad_channels == "true"
+    MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
+    DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
 
-        if sys.argv[2] == "true":
-            DEBUG = True
-        else:
-            DEBUG = False
-        DEBUG_DURATION = float(sys.argv[3]) if DEBUG else None
-        if sys.argv[4] == "true":
-            CONCAT = True
-        else:
-            CONCAT = False
-    else:
-        PREPROCESSING_STRATEGY = "cmr"
-        DEBUG = False
-        DEBUG_DURATION = False
-        CONCAT = False
+    # TODO: add motion correction
+    # motion_arg = args.motion or args.static_motion
+    # COMPUTE_MOTION = True if motion_arg != "skip" else False
+    # APPLY_MOTION = True if motion_arg == "apply" else False
 
-    assert PREPROCESSING_STRATEGY in [
-        "cmr",
-        "destripe",
-    ], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
-    preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
+    print(f"Running preprocessing with the following parameters:")
+    print(f"\CONCATENATE: {CONCAT}")
+    print(f"\tDENOISING_STRATEGY: {DENOISING_STRATEGY}")
+    print(f"\tREMOVE_OUT_CHANNELS: {REMOVE_OUT_CHANNELS}")
+    print(f"\tREMOVE_BAD_CHANNELS: {REMOVE_BAD_CHANNELS}")
+    print(f"\tMAX BAD CHANNEL FRACTION: {MAX_BAD_CHANNEL_FRACTION}")
+    # TODO: add motion correction
+    # print(f"\tCOMPUTE_MOTION: {COMPUTE_MOTION}")
+    # print(f"\tAPPLY_MOTION: {APPLY_MOTION}")
 
     if DEBUG:
-        print("DEBUG ENABLED")
+        print(f"\nDEBUG ENABLED - Only running with {DEBUG_DURATION} seconds\n")
         # when debug is enabled let's shorten some steps
         postprocessing_params["waveforms"]["max_spikes_per_unit"] = 200
         visualization_params["timeseries"]["n_snippets_per_segment"] = 1
@@ -255,6 +319,20 @@ if __name__ == "__main__":
         visualization_params["timeseries"]["skip"] = False
         # do not use presence ratio for short durations
         curation_params["presence_ratio_threshold"] = 0.1
+
+    preprocessing_params["denoising_strategy"] = DENOISING_STRATEGY
+    preprocessing_params["remove_out_channels"] = REMOVE_OUT_CHANNELS
+    preprocessing_params["remove_bad_channels"] = REMOVE_BAD_CHANNELS
+    preprocessing_params["max_bad_channel_fraction"] = MAX_BAD_CHANNEL_FRACTION
+    # TODO: add motion correction
+    # preprocessing_params["motion_correction"]["compute"] = COMPUTE_MOTION
+    # preprocessing_params["motion_correction"]["apply"] = APPLY_MOTION
+
+    # SET DEFAULT JOB KWARGS
+    si.set_global_job_kwargs(**job_kwargs)
+
+    kachery_zone = os.getenv("KACHERY_ZONE", None)
+    print(f"Kachery Zone: {kachery_zone}")
 
     ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
     assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
@@ -274,7 +352,7 @@ if __name__ == "__main__":
         with open(session / "processing.json", "r") as processing_file:
             processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
-        processing = Processing.construct(**processing_dict)
+        processing = Processing.model_construct(**processing_dict)
     else:
         processing = None
 
@@ -282,7 +360,7 @@ if __name__ == "__main__":
         with open(session / "data_description.json", "r") as data_description_file:
             data_description_dict = json.load(data_description_file)
         # Allow for parsing earlier versions of Processing files
-        data_description = dd.DataDescription.construct(**data_description_dict)
+        data_description = DataDescription.model_construct(**data_description_dict)
     else:
         data_description = None
 
@@ -317,7 +395,6 @@ if __name__ == "__main__":
 
     print(f"Session: {session_name} - Num. Blocks {num_blocks} - Num. streams: {len(stream_names)}")
     print(f"Global job kwargs: {si.get_global_job_kwargs()}")
-    print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
 
     ####### PREPROCESSING #######
     print("\n\nPREPROCESSING")
@@ -422,12 +499,10 @@ if __name__ == "__main__":
 
                         all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
 
-                        max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-                        if len(all_bad_channel_ids) >= int(
-                            max_bad_channel_fraction_to_remove * recording.get_num_channels()
-                        ):
+                        max_bad_channel_fraction = preprocessing_params["max_bad_channel_fraction"]
+                        if len(all_bad_channel_ids) >= int(max_bad_channel_fraction * recording.get_num_channels()):
                             print(
-                                f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
+                                f"\tMore than {max_bad_channel_fraction * 100}% bad channels ({len(all_bad_channel_ids)}). "
                                 f"Skipping further processing for this recording."
                             )
                             preprocessing_notes += (
@@ -459,24 +534,24 @@ if __name__ == "__main__":
                                 highpass_spatial=recording_hp_spatial,
                             )
 
-                            preproc_strategy = preprocessing_params["preprocessing_strategy"]
-                            if preproc_strategy == "cmr":
+                            denoising_strategy = preprocessing_params["denoising_strategy"]
+                            if denoising_strategy == "cmr":
                                 recording_processed = recording_processed_cmr
                             else:
                                 recording_processed = recording_hp_spatial
 
                             if preprocessing_params["remove_bad_channels"]:
                                 print(
-                                    f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing"
+                                    f"\tRemoving {len(bad_channel_ids)} channels after {denoising_strategy} preprocessing"
                                 )
                                 recording_processed = recording_processed.remove_channels(bad_channel_ids)
                                 preprocessing_notes += (
                                     f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                                 )
-                            recording_saved = recording_processed.save(
-                                folder=preprocessed_tmp_folder / recording_name
+                            recording_saved = recording_processed.save(folder=preprocessed_tmp_folder / recording_name)
+                            recording_processed.dump_to_json(
+                                preprocessed_output_folder / f"{recording_name}.json", relative_to=data_folder
                             )
-                            recording_processed.dump_to_json(preprocessed_output_folder / f"{recording_name}.json", relative_to=data_folder)
                             recording_drift = recording_saved
 
                     if skip_processing:
@@ -771,7 +846,7 @@ if __name__ == "__main__":
             peaks = we.sorting.to_spike_vector()
             peak_locations = we.load_extension("spike_locations").get_data()
             peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
-        # otherwise etect peaks
+        # otherwise detect peaks
         else:
             from spikeinterface.core.node_pipeline import ExtractDenseWaveforms, run_node_pipeline
             from spikeinterface.sortingcomponents.peak_detection import DetectPeakLocallyExclusive
@@ -1007,7 +1082,7 @@ if __name__ == "__main__":
         with open(session / "processing.json", "r") as processing_file:
             processing_dict = json.load(processing_file)
         # Allow for parsing earlier versions of Processing files
-        processing_old = Processing.construct(**processing_dict)
+        processing_old = Processing.model_construct(**processing_dict)
         processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINTAINER)
         processing.processing_pipeline.data_processes.append(ephys_data_processes)
     else:
@@ -1015,19 +1090,19 @@ if __name__ == "__main__":
             data_processes=ephys_data_processes,
             processor_full_name=PIPELINE_MAINTAINER,
             pipeline_url=PIPELINE_URL,
-            pipeline_version=PIPELINE_VERSION
+            pipeline_version=PIPELINE_VERSION,
         )
         processing = Processing(processing_pipeline=processing_pipeline)
 
     # save processing files to output
     with (results_folder / "processing.json").open("w") as f:
-        f.write(processing.json(indent=3))
+        f.write(processing.model_dump_json(indent=3))
 
     process_name = "sorted"
     if data_description is not None:
         upgrader = DataDescriptionUpgrade(old_data_description_model=data_description)
-        upgraded_data_description = upgrader.upgrade(platform=dd.Platform.ECEPHYS)
-        derived_data_description = dd.DerivedDataDescription.from_data_description(
+        upgraded_data_description = upgrader.upgrade(platform=Platform.ECEPHYS)
+        derived_data_description = DerivedDataDescription.from_data_description(
             upgraded_data_description, process_name=process_name
         )
     else:
@@ -1035,22 +1110,22 @@ if __name__ == "__main__":
         data_description_dict = {}
         data_description_dict["creation_time"] = datetime.now()
         data_description_dict["name"] = session_name
-        data_description_dict["institution"] = dd.Institution.AIND
-        data_description_dict["data_level"] = dd.DataLevel.RAW
-        data_description_dict["investigators"] = []
-        data_description_dict["funding_source"] = [dd.Funding(funder="AIND")]
-        data_description_dict["modality"] = [dd.Modality.ECEPHYS]
-        data_description_dict["platform"] = dd.Platform.ECEPHYS
+        data_description_dict["institution"] = Institution.AIND
+        data_description_dict["data_level"] = DataLevel.RAW
+        data_description_dict["investigators"] = [""]
+        data_description_dict["funding_source"] = [Funding(funder="AIND")]
+        data_description_dict["modality"] = [Modality.ECEPHYS]
+        data_description_dict["platform"] = Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
-        data_description = dd.DataDescription(**data_description_dict)
-        
-        derived_data_description = dd.DerivedDataDescription.from_data_description(
+        data_description = DataDescription(**data_description_dict)
+
+        derived_data_description = DerivedDataDescription.from_data_description(
             data_description=data_description, process_name=process_name
         )
 
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
-        f.write(derived_data_description.json(indent=3))
+        f.write(derived_data_description.model_dump_json(indent=3))
 
     # remove tmp_folder
     shutil.rmtree(tmp_folder)
