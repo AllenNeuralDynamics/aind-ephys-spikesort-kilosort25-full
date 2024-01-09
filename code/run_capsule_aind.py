@@ -498,7 +498,7 @@ if __name__ == "__main__":
             )
         except Exception as e:
             # save log to results
-            sorting_output_folder.mkdir()
+            sorting_output_folder.mkdir(parents=True)
             shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
         print(f"\tRaw sorting output: {sorting}")
         spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
