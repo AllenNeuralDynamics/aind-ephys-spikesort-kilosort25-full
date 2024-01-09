@@ -40,6 +40,7 @@ The scripts also support the same options as follows:
 In addition, the scripts accept the `--data-folder` option to modify the path of the data (by default `../data`) 
 and a `--n-jobs` parameter to control the maximum number of jobs used for parallelization.
 
+Finally, the `--params-file` allows one to specify the location of a JSON file with the parameters used for the processing. Default parameters are used in case this option is not specified and can be found in the `code/processing_params.json` file.
 
 For example, one could run:
 ```bash
@@ -109,7 +110,7 @@ cd /capsule/code
 ```
 
 > **_NOTES ON DOCKER RUN:_**
-> The `--gpu all` flag is required to make the GPU available to the container (and Kilosort)
+> The `--gpu all` flag is required to make the GPU available to the container (and Kilosort).
 > The `--shm-size 8G` flag is required to increase the shared memory size (default is 64M), which is used internally for parallel processing.
 > The `-v .:/capsule` option mounts the current folder `.` to the `/capsule` folder in the container, so that the data and scripts are available.
 > The `--env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY` flags are required to set up the cloud visualization with FigURL (see [Notes on visualization](#notes-on-visualization) for more details)
