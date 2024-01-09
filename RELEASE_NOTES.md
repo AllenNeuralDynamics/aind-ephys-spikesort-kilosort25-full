@@ -1,8 +1,14 @@
 # Release notes
 
-### v2.2 - Dec 11, 2023
+## v3.0 - Jan 10, 2024
 
-- fix creation of `DerivedDataDescription` from scratch
+- update to `aind-data-schema==0.22.2`
+- change path to precurated output from the `sorting_precurated` to `curated` folder
+- add ArgumentParser to be able to pass discrete command lines
+- extended available CLI arguments to control removal of out/bad channels and max fraction of bad channels
+- some renaming:
+    - `preprocessing_strategy` -> `denoising_strategy`
+    - `max_bad_channel_fraction_to_remove` - > `max_bad_channel_fraction`
 
 ### v2.1 - Dec 7, 2023
 
