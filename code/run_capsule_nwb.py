@@ -5,11 +5,11 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # GENERAL IMPORTS
 import os
+import argparse
 import numpy as np
 from pathlib import Path
 import shutil
 import json
-import sys
 import time
 from datetime import datetime, timedelta
 from packaging.version import parse
@@ -17,6 +17,7 @@ from packaging.version import parse
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+matplotlib.use("agg")
 
 # SPIKEINTERFACE
 import spikeinterface as si
@@ -30,229 +31,110 @@ import spikeinterface.widgets as sw
 
 import sortingview.views as vv
 
-
 # LOCAL
 from version import version as __version__
 
-matplotlib.use("agg")
 
+### ARGPARSE ###
+parser = argparse.ArgumentParser(description="AIND processing ephys pipeline")
 
-### PARAMS ###
-n_jobs = os.cpu_count()
-job_kwargs = dict(n_jobs=n_jobs, chunk_duration="1s", progress_bar=False)
+debug_group = parser.add_mutually_exclusive_group()
+debug_help = "Whether to run in DEBUG mode"
+debug_group.add_argument("--debug", action="store_true", help=debug_help)
+debug_group.add_argument("static_debug", nargs="?", default="false", help=debug_help)
 
-preprocessing_params = dict(
-    preprocessing_strategy="cmr",  # 'destripe' or 'cmr'
-    min_preprocessing_duration=120,  # if less than this duration, processing is skipped (probably a test recording)
-    highpass_filter=dict(freq_min=300.0, margin_ms=5.0),
-    phase_shift=dict(margin_ms=100.0),
-    detect_bad_channels=dict(
-        method="coherence+psd",
-        dead_channel_threshold=-0.5,
-        noisy_channel_threshold=1.0,
-        outside_channel_threshold=-0.3,
-        n_neighbors=11,
-        seed=0,
-    ),
-    remove_out_channels=False,
-    remove_bad_channels=False,
-    max_bad_channel_fraction_to_remove=1.1,
-    common_reference=dict(reference="global", operator="median"),
-    highpass_spatial_filter=dict(
-        n_channel_pad=60,
-        n_channel_taper=None,
-        direction="y",
-        apply_agc=True,
-        agc_window_length_s=0.01,
-        highpass_butter_order=3,
-        highpass_butter_wn=0.01,
-    ),
+concat_group = parser.add_mutually_exclusive_group()
+concat_help = "Whether to concatenate recordings (segments) or not. Default: False"
+concat_group.add_argument("--concatenate", action="store_true", help=concat_help)
+concat_group.add_argument("static_concatenate", nargs="?", default="false", help=concat_help)
+
+denoising_group = parser.add_mutually_exclusive_group()
+denoising_help = "Which denoising strategy to use. Can be 'cmr' or 'destripe'"
+denoising_group.add_argument("--denoising", choices=["cmr", "destripe"], help=denoising_help)
+denoising_group.add_argument("static_denoising", nargs="?", default="cmr", help=denoising_help)
+
+remove_out_channels_group = parser.add_mutually_exclusive_group()
+remove_out_channels_help = "Whether to remove out channels"
+remove_out_channels_group.add_argument("--no-remove-out-channels", action="store_true", help=remove_out_channels_help)
+remove_out_channels_group.add_argument(
+    "static_remove_out_channels", nargs="?", default="true", help=remove_out_channels_help
 )
 
-sorter_name = "kilosort2_5"
-sorter_params = dict()
-
-qm_params = {
-    "presence_ratio": {"bin_duration_s": 60},
-    "snr": {"peak_sign": "neg", "peak_mode": "extremum", "random_chunk_kwargs_dict": None},
-    "isi_violation": {"isi_threshold_ms": 1.5, "min_isi_ms": 0},
-    "rp_violation": {"refractory_period_ms": 1, "censored_period_ms": 0.0},
-    "sliding_rp_violation": {
-        "bin_size_ms": 0.25,
-        "window_size_s": 1,
-        "exclude_ref_period_below_ms": 0.5,
-        "max_ref_period_ms": 10,
-        "contamination_values": None,
-    },
-    "amplitude_cutoff": {
-        "peak_sign": "neg",
-        "num_histogram_bins": 100,
-        "histogram_smoothing_value": 3,
-        "amplitudes_bins_min_ratio": 5,
-    },
-    "amplitude_median": {"peak_sign": "neg"},
-    "amplitude_cv": {
-        "average_num_spikes_per_bin": 50,
-        "percentiles": (5, 95),
-        "min_num_bins": 10,
-        "amplitude_extension": "spike_amplitudes",
-    },
-    "firing_range": {"bin_size_s": 5, "percentiles": (5, 95)},
-    "synchrony": {"synchrony_sizes": (2, 4, 8)},
-    "nearest_neighbor": {"max_spikes": 10000, "n_neighbors": 4},
-    "nn_isolation": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
-    "nn_noise_overlap": {"max_spikes": 10000, "min_spikes": 10, "n_neighbors": 4, "n_components": 10, "radius_um": 100},
-    "silhouette": {"method": ("simplified",)}
-}
-qm_metric_names = [
-    "num_spikes",
-    "firing_rate",
-    "presence_ratio",
-    "snr",
-    "isi_violation",
-    "rp_violation",
-    "sliding_rp_violation",
-    "amplitude_cutoff",
-    "amplitude_median",
-    "amplitude_cv",
-    "synchrony",
-    "firing_range",
-    "drift",
-    "isolation_distance",
-    "l_ratio",
-    "d_prime",
-    "nearest_neighbor",
-    "silhouette"
-]
-
-sparsity_params = dict(method="radius", radius_um=100)
-
-postprocessing_params = dict(
-    sparsity=sparsity_params,
-    waveforms_deduplicate=dict(
-        ms_before=0.5,
-        ms_after=1.5,
-        max_spikes_per_unit=100,
-        return_scaled=False,
-        dtype=None,
-        precompute_template=("average",),
-        use_relative_path=True,
-    ),
-    waveforms=dict(
-        ms_before=3.0,
-        ms_after=4.0,
-        max_spikes_per_unit=500,
-        return_scaled=True,
-        dtype=None,
-        precompute_template=("average", "std"),
-        use_relative_path=True,
-    ),
-    spike_amplitudes=dict(
-        peak_sign="neg",
-        return_scaled=True,
-        outputs="concatenated",
-    ),
-    similarity=dict(method="cosine_similarity"),
-    correlograms=dict(
-        window_ms=50.0,
-        bin_ms=1.0,
-    ),
-    isis=dict(
-        window_ms=100.0,
-        bin_ms=5.0,
-    ),
-    locations=dict(method="monopolar_triangulation"),
-    template_metrics=dict(upsampling_factor=10, sparsity=None, include_multi_channel_metrics=True),
-    principal_components=dict(n_components=5, mode="by_channel_local", whiten=True),
-    quality_metrics=dict(qm_params=qm_params, metric_names=qm_metric_names, n_jobs=1),
+remove_bad_channels_group = parser.add_mutually_exclusive_group()
+remove_bad_channels_help = "Whether to remove bad channels"
+remove_bad_channels_group.add_argument("--no-remove-bad-channels", action="store_true", help=remove_bad_channels_help)
+remove_bad_channels_group.add_argument(
+    "static_remove_bad_channels", nargs="?", default="true", help=remove_bad_channels_help
 )
 
-curation_params = dict(
-    duplicate_threshold=0.9,
-    isi_violations_ratio_threshold=0.5,
-    presence_ratio_threshold=0.8,
-    amplitude_cutoff_threshold=0.1,
+max_bad_channel_fraction_group = parser.add_mutually_exclusive_group()
+max_bad_channel_fraction_help = (
+    "Maximum fraction of bad channels to remove. If more than this fraction, processing is skipped"
+)
+max_bad_channel_fraction_group.add_argument(
+    "--max-bad-channel-fraction", default=0.5, help=max_bad_channel_fraction_help
+)
+max_bad_channel_fraction_group.add_argument(
+    "static_max_bad_channel_fraction", nargs="?", default="0.5", help=max_bad_channel_fraction_help
 )
 
-visualization_params = dict(
-    timeseries=dict(n_snippets_per_segment=2, snippet_duration_s=0.5, skip=False),
-    drift=dict(
-        detection=dict(method="locally_exclusive", peak_sign="neg", detect_threshold=5, exclude_sweep_ms=0.1),
-        localization=dict(ms_before=0.1, ms_after=0.3, radius_um=100.0),
-        n_skip=30,
-        alpha=0.15,
-        vmin=-200,
-        vmax=0,
-        cmap="Greys_r",
-        figsize=(10, 10),
-    ),
+debug_duration_group = parser.add_mutually_exclusive_group()
+debug_duration_help = (
+    "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
 )
+debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
+debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
 
-data_folder = Path("../data")
-scratch_folder = Path("../scratch")
-results_folder = Path("../results")
-
-if scratch_folder.is_dir():
-    shutil.rmtree(scratch_folder)
-scratch_folder.mkdir(exist_ok=True)
-if results_folder.is_dir():
-    shutil.rmtree(results_folder)
-results_folder.mkdir(exist_ok=True)
-
-tmp_folder = results_folder / "tmp"
-if tmp_folder.is_dir():
-    shutil.rmtree(tmp_folder)
-tmp_folder.mkdir()
-
-visualization_output = {}
+parser.add_argument("--data-folder", default="../data", help="Custom data folder for input data (default ../data)")
+n_jobs_help = "Number of jobs to use for parallel processing. Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores"
+parser.add_argument("--n-jobs", default="-1", help=n_jobs_help)
+parser.add_argument("--params-file", default=None, help="Optional json file with parameters")
 
 
 if __name__ == "__main__":
     datetime_now = datetime.now()
     t_global_start = time.perf_counter()
-    # SET DEFAULT JOB KWARGS
-    si.set_global_job_kwargs(**job_kwargs)
 
-    kachery_zone = os.getenv("KACHERY_ZONE", None)
-    print(f"Kachery Zone: {kachery_zone}")
+    args = parser.parse_args()
 
-    if len(sys.argv) == 7:
-        PREPROCESSING_STRATEGY = sys.argv[1]
-        if sys.argv[2] == "true":
-            REMOVE_OUT_CHANNELS = True
-        else:
-            REMOVE_OUT_CHANNELS = False
-        if sys.argv[3] == "true":
-            REMOVE_BAD_CHANNELS = True
-        else:
-            REMOVE_BAD_CHANNELS = False
-        if sys.argv[4] == "true":
-            DEBUG = True
-        else:
-            DEBUG = False
-        DEBUG_DURATION = float(sys.argv[5]) if DEBUG else None
-        if sys.argv[6] == "true":
-            CONCAT = True
-        else:
-            CONCAT = False
+    DEBUG = args.debug or args.static_debug == "true"
+    CONCAT = args.concatenate or args.static_concatenate.lower() == "true"
+    DENOISING_STRATEGY = args.denoising or args.static_denoising
+    REMOVE_OUT_CHANNELS = False if args.no_remove_out_channels else args.static_remove_out_channels == "true"
+    REMOVE_BAD_CHANNELS = False if args.no_remove_bad_channels else args.static_remove_bad_channels == "true"
+    MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
+    DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
+    DATA_FOLDER = Path(args.data_folder)
+    N_JOBS = int(args.n_jobs) if not args.n_jobs.startswith("0.") else float(args.n_jobs)
+    PARAMS_FILE = args.params_file
+
+    print(f"Running preprocessing with the following parameters:")
+    print(f"\tCONCATENATE: {CONCAT}")
+    print(f"\tDENOISING_STRATEGY: {DENOISING_STRATEGY}")
+    print(f"\tREMOVE_OUT_CHANNELS: {REMOVE_OUT_CHANNELS}")
+    print(f"\tREMOVE_BAD_CHANNELS: {REMOVE_BAD_CHANNELS}")
+    print(f"\tMAX BAD CHANNEL FRACTION: {MAX_BAD_CHANNEL_FRACTION}")
+    print(f"\tDATA_FOLDER: {DATA_FOLDER}")
+    print(f"\tN_JOBS: {N_JOBS}")
+
+    if PARAMS_FILE is not None:
+        print(f"\nUsing custom params file: {PARAMS_FILE}")
+        with open(PARAMS_FILE, "r") as f:
+            processing_params = json.load(f)
     else:
-        PREPROCESSING_STRATEGY = "cmr"
-        REMOVE_OUT_CHANNELS = True
-        REMOVE_BAD_CHANNELS = True
-        DEBUG = False
-        DEBUG_DURATION = False
-        CONCAT = False
+        with open("processing_params.json", "r") as f:
+            processing_params = json.load(f)
 
-    assert PREPROCESSING_STRATEGY in [
-        "cmr",
-        "destripe",
-    ], f"Preprocessing strategy can be 'cmr' or 'destripe'. {PREPROCESSING_STRATEGY} not supported."
-    preprocessing_params["preprocessing_strategy"] = PREPROCESSING_STRATEGY
-    preprocessing_params["remove_out_channels"] = REMOVE_OUT_CHANNELS
-    preprocessing_params["remove_bad_channels"] = REMOVE_BAD_CHANNELS
+    job_kwargs = processing_params["job_kwargs"]
+    preprocessing_params = processing_params["preprocessing"]
+    spikesorting_params = processing_params["spikesorting"]
+    postprocessing_params = processing_params["postprocessing"]
+    quality_metrics_params = processing_params["quality_metrics"]
+    curation_params = processing_params["curation"]
+    visualization_params = processing_params["visualization"]
 
     if DEBUG:
-        print("DEBUG ENABLED")
+        print(f"\nDEBUG ENABLED - Only running with {DEBUG_DURATION} seconds\n")
         # when debug is enabled let's shorten some steps
         postprocessing_params["waveforms"]["max_spikes_per_unit"] = 200
         visualization_params["timeseries"]["n_snippets_per_segment"] = 1
@@ -261,16 +143,44 @@ if __name__ == "__main__":
         # do not use presence ratio for short durations
         curation_params["presence_ratio_threshold"] = 0.1
 
+    preprocessing_params["denoising_strategy"] = DENOISING_STRATEGY
+    preprocessing_params["remove_out_channels"] = REMOVE_OUT_CHANNELS
+    preprocessing_params["remove_bad_channels"] = REMOVE_BAD_CHANNELS
+    preprocessing_params["max_bad_channel_fraction"] = MAX_BAD_CHANNEL_FRACTION
+
+    # set paths
+    data_folder = DATA_FOLDER
+    scratch_folder = Path("../scratch")
+    results_folder = Path("../results")
+
+    if scratch_folder.is_dir():
+        shutil.rmtree(scratch_folder)
+    scratch_folder.mkdir(exist_ok=True)
+    if results_folder.is_dir():
+        shutil.rmtree(results_folder)
+    results_folder.mkdir(exist_ok=True)
+
+    tmp_folder = results_folder / "tmp"
+    if tmp_folder.is_dir():
+        shutil.rmtree(tmp_folder)
+    tmp_folder.mkdir()
+
+    # SET DEFAULT JOB KWARGS
+    job_kwargs["n_jobs"] = N_JOBS
+    si.set_global_job_kwargs(**job_kwargs)
+
+    kachery_zone = os.getenv("KACHERY_ZONE", None)
+    print(f"Kachery Zone: {kachery_zone}")
+
     ### DATA LOADING SECTION ###
 
-    ## NAB data loader ##
+    ## NWB data loader ##
     input_format = "nwb"
     ecephys_nwb_files = [p for p in data_folder.iterdir() if ".nwb" in p.name]
     assert len(ecephys_nwb_files) == 1, "Provide one NWB file at a time"
     ecephys_nwb_file = ecephys_nwb_files[0]
 
     print(f"Global job kwargs: {si.get_global_job_kwargs()}")
-    print(f"Preprocessing strategy: {PREPROCESSING_STRATEGY}")
 
     ####### PREPROCESSING #######
     print("\n\nPREPROCESSING")
@@ -326,6 +236,7 @@ if __name__ == "__main__":
         recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
         preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(dict(highpass=recording_hp_full))
 
+        skip_processing = False
         if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
             print(f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing")
             preprocessing_notes += (
@@ -356,10 +267,10 @@ if __name__ == "__main__":
             all_bad_channel_ids = np.concatenate((dead_channel_ids, noise_channel_ids, out_channel_ids))
 
             skip_processing = False
-            max_bad_channel_fraction_to_remove = preprocessing_params["max_bad_channel_fraction_to_remove"]
-            if len(all_bad_channel_ids) >= int(max_bad_channel_fraction_to_remove * recording.get_num_channels()):
+            max_bad_channel_fraction = preprocessing_params["max_bad_channel_fraction"]
+            if len(all_bad_channel_ids) >= int(max_bad_channel_fraction * recording.get_num_channels()):
                 print(
-                    f"\tMore than {max_bad_channel_fraction_to_remove * 100}% bad channels ({len(all_bad_channel_ids)}). "
+                    f"\tMore than {max_bad_channel_fraction * 100}% bad channels ({len(all_bad_channel_ids)}). "
                     f"Skipping further processing for this recording."
                 )
                 preprocessing_notes += (
@@ -389,14 +300,14 @@ if __name__ == "__main__":
                     highpass_spatial=recording_hp_spatial,
                 )
 
-                preproc_strategy = preprocessing_params["preprocessing_strategy"]
-                if preproc_strategy == "cmr":
+                denoising_strategy = preprocessing_params["denoising_strategy"]
+                if denoising_strategy == "cmr":
                     recording_processed = recording_processed_cmr
                 else:
                     recording_processed = recording_hp_spatial
 
                 if preprocessing_params["remove_bad_channels"]:
-                    print(f"\tRemoving {len(bad_channel_ids)} channels after {preproc_strategy} preprocessing")
+                    print(f"\tRemoving {len(bad_channel_ids)} channels after {denoising_strategy} preprocessing")
                     recording_processed = recording_processed.remove_channels(bad_channel_ids)
                     preprocessing_notes += f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                 recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
@@ -415,7 +326,6 @@ if __name__ == "__main__":
     ####### SPIKESORTING ########
     print("\n\nSPIKE SORTING")
     spikesorting_notes = ""
-    sorting_params = None
 
     datetime_start_sorting = datetime.now()
     t_sorting_start = time.perf_counter()
@@ -430,7 +340,6 @@ if __name__ == "__main__":
         if not recording_folder.is_dir():
             print(f"Skipping sorting for recording: {recording_name}")
             spikesorting_notes += f"{recording_name}:\n- Skipped spike sorting.\n"
-            sorting_params = {}
             continue
         print(f"Sorting recording: {recording_name}")
         recording = si.load_extractor(recording_folder)
@@ -444,12 +353,12 @@ if __name__ == "__main__":
         # run ks2.5
         try:
             sorting = ss.run_sorter(
-                sorter_name,
+                spikesorting_params["sorter_name"],
                 recording,
                 output_folder=spikesorted_raw_output_folder / recording_name,
                 verbose=False,
                 delete_output_folder=True,
-                **sorter_params,
+                **spikesorting_params["sorter_params"],
             )
         except Exception as e:
             # save log to results
@@ -457,8 +366,6 @@ if __name__ == "__main__":
             shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
         print(f"\tRaw sorting output: {sorting}")
         spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
-        if sorting_params is None:
-            sorting_params = sorting.sorting_info["params"]
 
         # remove empty units
         sorting = sorting.remove_empty_units()
@@ -511,7 +418,7 @@ if __name__ == "__main__":
         )
         # de-duplication
         sorting_deduplicated = sc.remove_redundant_units(
-            we_raw, duplicate_threshold=curation_params["duplicate_threshold"]
+            we_raw, duplicate_threshold=postprocessing_params["duplicate_threshold"]
         )
         print(
             f"\tNumber of original units: {len(we_raw.sorting.unit_ids)} -- Number of units after de-duplication: {len(sorting_deduplicated.unit_ids)}"
@@ -519,7 +426,7 @@ if __name__ == "__main__":
         postprocessing_notes += f"{recording_name}:\n- Removed {len(sorting.unit_ids) - len(sorting_deduplicated.unit_ids)} duplicated units.\n"
         deduplicated_unit_ids = sorting_deduplicated.unit_ids
         # use existing deduplicated waveforms to compute sparsity
-        sparsity_raw = si.compute_sparsity(we_raw, **sparsity_params)
+        sparsity_raw = si.compute_sparsity(we_raw, **postprocessing_params["sparsity"])
         sparsity_mask = sparsity_raw.mask[sorting.ids_to_indices(deduplicated_unit_ids), :]
         sparsity = si.ChannelSparsity(
             mask=sparsity_mask, unit_ids=deduplicated_unit_ids, channel_ids=recording.channel_ids
@@ -556,8 +463,10 @@ if __name__ == "__main__":
         tm = spost.compute_template_metrics(we, **postprocessing_params["template_metrics"])
         print("\tComputing PCA")
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
+
+        # QUALITY METRICS
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
+        qm = sqm.compute_quality_metrics(we, **quality_metrics_params)
 
     t_postprocessing_end = time.perf_counter()
     elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
@@ -598,11 +507,11 @@ if __name__ == "__main__":
 
         # flag units as good/bad depending on QC selection
         qc_quality = [True if unit in curated_unit_ids else False for unit in we.sorting.unit_ids]
-        sorting_precurated = we.sorting
-        sorting_precurated.set_property("default_qc", qc_quality)
-        sorting_precurated.save(folder=results_folder / "sorting_precurated" / recording_name)
+        sorting_curated = we.sorting
+        sorting_curated.set_property("default_qc", qc_quality)
+        sorting_curated.save(folder=results_folder / "curated" / recording_name)
         curation_notes += (
-            f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_precurated.unit_ids)} passing default QC.\n"
+            f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_curated.unit_ids)} passing default QC.\n"
         )
 
     t_curation_end = time.perf_counter()
@@ -613,8 +522,8 @@ if __name__ == "__main__":
     print("\n\nVISUALIZATION")
     t_visualization_start = time.perf_counter()
     datetime_start_visualization = datetime.now()
-
     postprocessed_folder = results_folder / "postprocessed"
+    visualization_output = {}
 
     # loop through block-streams
     for recording_name in recording_names:
@@ -796,9 +705,9 @@ if __name__ == "__main__":
             continue
         print(f"\tVisualizing sorting summary")
         we = si.load_waveforms(recording_folder)
-        sorting_precurated = si.load_extractor(results_folder / "sorting_precurated" / recording_name)
+        sorting_curated = si.load_extractor(results_folder / "curated" / recording_name)
         # set waveform_extractor sorting object to have pass_qc property
-        we.sorting = sorting_precurated
+        we.sorting = sorting_curated
 
         if len(we.sorting.unit_ids) > 0:
             # tab layout with Summary and Quality Metrics
@@ -822,7 +731,7 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
-                url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary")
+                url = v_summary.url(label=f"{session_name} - {recording_name} - {spikesorting_params['sorter_name']} - Sorting Summary")
                 print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 
@@ -848,13 +757,6 @@ if __name__ == "__main__":
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
     # save processing files to output
-    processing_params = dict(
-        preprocessing=preprocessing_params,
-        sorting=sorting_params,
-        postprocessing=postprocessing_params,
-        curation=curation_params,
-        visualization=visualization_params,
-    )
     with (results_folder / "processing_params.json").open("w") as f:
         json.dump(processing_params, f, indent=4)
 

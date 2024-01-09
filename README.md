@@ -10,6 +10,63 @@ The pipeline includes:
 - curation based on ISI violation ratio, presence ratio, and amplitude cutoff
 - visualization of timeseries, drift maps, and sorting output in sortingview
 
+# Usage
+
+## Input parameters
+
+The `run_capsule_*.py` scripts optionally accepts positionsal or options.
+
+When using positional argument, up to 7 arguments can be passed, in this STRICT order:
+
+1. "debug": Whether to run in DEBUG mode (`false` or `true`, default `false`)
+2. "concatenate": Whether to concatenate recordings/segments (`false` or `true`. default `false`)
+3. "denoising strategy": Which denoising strategy to use. Can be `cmr` (default) or `destripe`
+4. "remove out channels": Whether to remove out channels (`false` or `true`, default `true`)
+5. "remove bad channels": Whether to remove bad channels (`false` or `true`, default `true`)
+6. "max bad channel fraction": Maximum fraction of bad channels to remove. If more than this fraction, processing is skipped (default 0.5)
+7. "debug duration": Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled
+
+
+The scripts also support the same options as follows:
+
+- `--debug`: Whether to run in DEBUG mode. Default: False
+- `--concatenate`: Whether to concatenate recordings (segments) or not. Default: False
+- `--denoising` {cmr,destripe}: Which denoising strategy to use. Can be 'cmr' or 'destripe'
+- `--no-remove-out-channels`: Whether to remove out channels
+- `--no-remove-bad-channels`: Whether to remove bad channels
+- `--max-bad-channel-fraction`: Maximum fraction of bad channels to remove. If more than this fraction, processing is skipped
+- `--debug-duration`: Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled
+
+In addition, the scripts accept the `--data-folder` option to modify the path of the data (by default `../data`) 
+and a `--n-jobs` parameter to control the maximum number of jobs used for parallelization.
+
+
+For example, one could run:
+```bash
+python run_capsule.py true false destripe true false 0.8 30
+```
+Or:
+```bash
+python run_capsule.py --debug --denoising destripe --no-remove-bad-channels \
+                      --max-bad-channel-fraction 0.8 --debug-duration 30
+```
+
+## Results organization
+
+The script produces the following output files in the `results` folder:
+
+- `drift_maps`: raster maps for each *stream*
+- `postprocessed`: postprocessing output for each stream with waveforms, correlograms, isi histograms, principal components, quality metrics, similarity, spike amplitudes, spike and unit locations and template metrics. Each folder can be loaded with: `we = si.load_waveforms("postprocessed/{stream_name}", with_recording=False)`
+- `spikesorted`: *raw* spike sorting output from KS2.5 for each stream. Each sorting output can be loaded with: `sorting_raw = si.load_extractor("spikesorted/{stream_name}")`
+- `curated`: *pre-curated* spike sorting output, with an additional `default_qc` property (`True`/`False`) for each unit. Each pre-curated sorting output can be loaded with: `sorting_raw = si.load_extractor("curated/{stream_name}")`
+- `processing.json`: the processing parameter following the [aind-data-schema](https://github.com/AllenNeuralDynamics/aind-data-schema) metadata schema.
+- `visualization_output.json`: convenient file with [FigURL](https://github.com/flatironinstitute/figurl) links for cloud visualization
+
+## Notes on visualization
+
+The processing pipeline assumes that [FigURL](https://github.com/flatironinstitute/figurl) is correctly set up.
+If you are planning to use this pipeline extensively, please consider providing your own cloud resources (see [Create Kachery Zone](https://github.com/flatironinstitute/kachery-cloud/blob/main/doc/create_kachery_zone.md))
+
 
 ## How to run locally
 
@@ -26,13 +83,6 @@ git clone https://github.com/AllenNeuralDynamics/aind-capsule-ephys-spikesort-ki
 cd aind-capsule-ephys-spikesort-kilosort25-full
 ```
 
-Next, first we need to build the docker image:
-
-```bash
-cd environment
-docker build -t ephys-pipeline-container:latest .
-cd ..
-```
 
 Next, we need to move the dataset to analyze in the `data` folder. 
 For example, we can download an NWB file from [DANDI](https://dandiarchive.org/) (e.g. [this dataset](https://dandiarchive.org/dandiset/000028/draft/files?location=sub-mouse412804)) and 
@@ -43,18 +93,26 @@ mkdir data
 mv path-to-download-folder/sub-mouse412804_ses-20200803T115732_ecephys.nwb data
 ```
 
-Finally, we can start the container:
+Finally, we can start the container (`ghcr.io/allenneuraldynamics/aind-ephys-spikesort-kilosort25-full:latest`) 
+from the repo base folder (`aind-ephys-spikesort-kilosort25-full`):
 ```bash
 chmod +x ./code/run_nwb
-docker run -it --gpus all -v .:/capsule ephys-pipeline-container:latest 
+docker run -it --gpus all -v .:/capsule --shm-size 8G \
+    --env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY \
+    ghcr.io/allenneuraldynamics/aind-ephys-spikesort-kilosort25-full:latest
 ```
 
 and run the pipeline:
 ```bash
 cd /capsule/code
-./run_nwb
+./run_nwb # + optional parameters (e.g., --debug)
 ```
 
+> **_NOTES ON DOCKER RUN:_**
+> The `--gpu all` flag is required to make the GPU available to the container (and Kilosort)
+> The `--shm-size 8G` flag is required to increase the shared memory size (default is 64M), which is used internally for parallel processing.
+> The `-v .:/capsule` option mounts the current folder `.` to the `/capsule` folder in the container, so that the data and scripts are available.
+> The `--env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY` flags are required to set up the cloud visualization with FigURL (see [Notes on visualization](#notes-on-visualization) for more details)
 
 ## How to run it on Code Ocean?
 
@@ -72,37 +130,6 @@ The script assumes that the data in the `data` folder is organized as follows:
   - the `ecephys_compressed` and the `ecephys_clipped` folders, created by the [openephys_job](https://github.com/AllenNeuralDynamics/aind-data-transfer/blob/main/src/aind_data_transfer/jobs/openephys_job.py) script in the [aind-data-transfer](https://github.com/AllenNeuralDynamics/aind-data-transfer) repo.
 
 For instructions for local deployment, refer to the **Local Deployment** section at the end of the page.
-
-
-## Input parameters
-
-The `run_capsule.py` script optionally accepts 4 arguments:
-
-1. "preprocessing_strategy": `cmr` (default) or `destripe`
-2. "debug": `false` or `true`
-3. "debug duration s": number of seconds to use in debug mode
-4. "concatenate recordings": `false` or `true`. If `false`, different segments from the same recordings are spike sorted separately. If `true`, they are concatenated and spike sorted together.
-
-For example, one could run:
-```
-python run_capsule.py destripe true 60 false
-```
-
-## Results organization
-
-The script produces the following output files in the `results` folder:
-
-- `drift_maps`: raster maps for each *stream*
-- `postprocessed`: postprocessing output for each stream with waveforms, correlograms, isi histograms, principal components, quality metrics, similarity, spike amplitudes, spike and unit locations and template metrics. Each folder can be loaded with: `we = si.load_waveforms("postprocessed/{stream_name}", with_recording=False)`
-- `spikesorted`: *raw* spike sorting output from KS2.5 for each stream. Each sorting output can be loaded with: `sorting_raw = si.load_extractor("spikesorted/{stream_name}")`
-- `sorting_precurated`: *pre-curated* spike sorting output, with an additional `default_qc` property (`True`/`False`) for each unit. Each pre-curated sorting output can be loaded with: `sorting_raw = si.load_extractor("sorting_precurated/{stream_name}")`
-- `processing.json`: the processing parameter following the [aind-data-schema](https://github.com/AllenNeuralDynamics/aind-data-schema) metadata schema.
-- `visualization_output.json`: convenient file with [FigURL](https://github.com/flatironinstitute/figurl) links for cloud visualization
-
-## Notes on visualization
-
-The processing pipeline assumes that [FigURL](https://github.com/flatironinstitute/figurl) is correctly set up. 
-If you are planning to use this pipeline extensively, please consider providing your own cloud resources (see [Create Kachery Zone](https://github.com/flatironinstitute/kachery-cloud/blob/main/doc/create_kachery_zone.md))
 
 
 
