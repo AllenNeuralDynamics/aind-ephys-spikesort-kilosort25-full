@@ -194,13 +194,6 @@ if __name__ == "__main__":
     scratch_folder = Path("../scratch")
     results_folder = Path("../results")
 
-    if scratch_folder.is_dir():
-        shutil.rmtree(scratch_folder)
-    scratch_folder.mkdir(exist_ok=True)
-    if results_folder.is_dir():
-        shutil.rmtree(results_folder)
-    results_folder.mkdir(exist_ok=True)
-
     tmp_folder = results_folder / "tmp"
     if tmp_folder.is_dir():
         shutil.rmtree(tmp_folder)
