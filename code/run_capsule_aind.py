@@ -610,7 +610,7 @@ if __name__ == "__main__":
 
         # QUALITY METRICS
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
+        qm = sqm.compute_quality_metrics(we, **quality_metrics_params)
 
     t_postprocessing_end = time.perf_counter()
     elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
@@ -902,6 +902,7 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
+                sorter_name = spikesorting_params["sorter_name"]
                 gh_path = f"{GH_CURATION_REPO}/{session_name}/{recording_name}/{sorter_name}/curation.json"
                 state = dict(sortingCuration=gh_path)
                 url = v_summary.url(
