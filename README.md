@@ -14,7 +14,7 @@ The pipeline includes:
 
 ## Input parameters
 
-The `run_capsule_*.py` scripts optionally accepts positionsal or options.
+The `run_capsule_*.py` scripts in the `code` folder accept positional or optional arguments.
 
 When using positional argument, up to 7 arguments can be passed, in this STRICT order:
 
@@ -40,15 +40,16 @@ The scripts also support the same options as follows:
 In addition, the scripts accept the `--data-folder` option to modify the path of the data (by default `../data`) 
 and a `--n-jobs` parameter to control the maximum number of jobs used for parallelization.
 
-Finally, the `--params-file` allows one to specify the location of a JSON file with the parameters used for the processing. Default parameters are used in case this option is not specified and can be found in the `code/processing_params.json` file.
+Finally, the `--params-file`/`--params-str` allows one to specify the location of a JSON file or a JSON-formatted string with custom parameters to be used for the processing. 
+Default parameters are used in case this option is not specified and can be found in the `code/processing_params.json` file.
 
 For example, one could run:
 ```bash
-python run_capsule.py true false destripe true false 0.8 30
+python run_capsule_*.py true false destripe true false 0.8 30
 ```
 Or:
 ```bash
-python run_capsule.py --debug --denoising destripe --no-remove-bad-channels \
+python run_capsule_*.py --debug --denoising destripe --no-remove-bad-channels \
                       --max-bad-channel-fraction 0.8 --debug-duration 30
 ```
 
@@ -60,7 +61,7 @@ The script produces the following output files in the `results` folder:
 - `postprocessed`: postprocessing output for each stream with waveforms, correlograms, isi histograms, principal components, quality metrics, similarity, spike amplitudes, spike and unit locations and template metrics. Each folder can be loaded with: `we = si.load_waveforms("postprocessed/{stream_name}", with_recording=False)`
 - `spikesorted`: *raw* spike sorting output from KS2.5 for each stream. Each sorting output can be loaded with: `sorting_raw = si.load_extractor("spikesorted/{stream_name}")`
 - `curated`: *pre-curated* spike sorting output, with an additional `default_qc` property (`True`/`False`) for each unit. Each pre-curated sorting output can be loaded with: `sorting_raw = si.load_extractor("curated/{stream_name}")`
-- `processing.json`: the processing parameter following the [aind-data-schema](https://github.com/AllenNeuralDynamics/aind-data-schema) metadata schema.
+- `processing_params.json`: the processing parameter following the [aind-data-schema](https://github.com/AllenNeuralDynamics/aind-data-schema) metadata schema.
 - `visualization_output.json`: convenient file with [FigURL](https://github.com/flatironinstitute/figurl) links for cloud visualization
 
 ## Notes on visualization
@@ -69,7 +70,7 @@ The processing pipeline assumes that [FigURL](https://github.com/flatironinstitu
 If you are planning to use this pipeline extensively, please consider providing your own cloud resources (see [Create Kachery Zone](https://github.com/flatironinstitute/kachery-cloud/blob/main/doc/create_kachery_zone.md))
 
 
-## How to run locally
+# Local deployment
 
 This pipeline is currently used at AIND on the Code Ocean platform. 
 
@@ -115,13 +116,14 @@ cd /capsule/code
 > The `-v .:/capsule` option mounts the current folder `.` to the `/capsule` folder in the container, so that the data and scripts are available.
 > The `--env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY` flags are required to set up the cloud visualization with FigURL (see [Notes on visualization](#notes-on-visualization) for more details)
 
-## How to run it on Code Ocean?
+
+# Code Ocean deployment
 
 Use the `aind` branch for a Code Ocean-ready version.
 
 The `environment` folder contains a `Dockerfile` to build the container with all required packages.
 
-The `code` folder contains the scripts to run the analysis (`run_capsule.py`). 
+The `code` folder contains the scripts to run the analysis (`run_capsule_aind.py`).
 
 The script assumes that the data in the `data` folder is organized as follows:
 
@@ -134,7 +136,7 @@ For instructions for local deployment, refer to the **Local Deployment** section
 
 
 
-## List of changes between `main` (local deployment) and `aind` (Code Ocean) branches
+# Differences between `main` (local) and `aind` (Code Ocean) branches
 
 Here is a list of the key changes that are needed:
 
@@ -160,5 +162,3 @@ a single NWB file).
 
 At AIND, we use [aind-data-schema](https://aind-data-schema.readthedocs.io/en/stable/) to deal with metadata. 
 The scripts in the `main` do not have metadata logging using the `aind-data-schema`.
-
-

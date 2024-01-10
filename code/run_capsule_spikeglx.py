@@ -753,7 +753,8 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
-                url = v_summary.url(label=f"{session_name} - {recording_name} - {spikesorting_params['sorter_name']} - Sorting Summary")
+                sorter_name = spikesorting_params["sorter_name"]
+                url = v_summary.url(label=f"{session_name} - {recording_name} - {sorter_name} - Sorting Summary")
                 print(f"\n{url}\n")
                 visualization_output[recording_name]["sorting_summary"] = url
 

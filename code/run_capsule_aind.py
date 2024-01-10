@@ -498,7 +498,7 @@ if __name__ == "__main__":
             )
         except Exception as e:
             # save log to results
-            sorting_output_folder.mkdir()
+            sorting_output_folder.mkdir(parents=True)
             shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
         print(f"\tRaw sorting output: {sorting}")
         spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
@@ -909,6 +909,7 @@ if __name__ == "__main__":
 
             try:
                 # pre-generate gh for curation
+                sorter_name = spikesorting_params["sorter_name"]
                 gh_path = f"{GH_CURATION_REPO}/{session_name}/{recording_name}/{sorter_name}/curation.json"
                 state = dict(sortingCuration=gh_path)
                 url = v_summary.url(
