@@ -17,6 +17,7 @@ from packaging.version import parse
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+
 matplotlib.use("agg")
 
 # SPIKEINTERFACE
@@ -85,10 +86,16 @@ debug_duration_help = (
 debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
 debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
 
-parser.add_argument("--data-folder", default="../data", help="Custom data folder for input data (default ../data)")
+parser.add_argument("--data-folder", default="../data", help="Custom data folder (default ../data)")
+parser.add_argument("--results-folder", default="../results", help="Custom results folder (default ../results)")
+parser.add_argument("--scratch-folder", default="../data", help="Custom scratch folder (default ../scratch)")
+
 n_jobs_help = "Number of jobs to use for parallel processing. Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores"
 parser.add_argument("--n-jobs", default="-1", help=n_jobs_help)
-parser.add_argument("--params-file", default=None, help="Optional json file with parameters")
+
+params_group = parser.add_mutually_exclusive_group()
+params_group.add_argument("--params-file", default=None, help="Optional json file with parameters")
+params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
 
 
 if __name__ == "__main__":
@@ -105,8 +112,11 @@ if __name__ == "__main__":
     MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
     DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
     DATA_FOLDER = Path(args.data_folder)
+    RESULTS_FOLDER = Path(args.results_folder)
+    SCRATCH_FOLDER = Path(args.scratch_folder)
     N_JOBS = int(args.n_jobs) if not args.n_jobs.startswith("0.") else float(args.n_jobs)
     PARAMS_FILE = args.params_file
+    PARAMS_STR = args.params_str
 
     print(f"Running preprocessing with the following parameters:")
     print(f"\tCONCATENATE: {CONCAT}")
@@ -115,12 +125,16 @@ if __name__ == "__main__":
     print(f"\tREMOVE_BAD_CHANNELS: {REMOVE_BAD_CHANNELS}")
     print(f"\tMAX BAD CHANNEL FRACTION: {MAX_BAD_CHANNEL_FRACTION}")
     print(f"\tDATA_FOLDER: {DATA_FOLDER}")
+    print(f"\tRESULTS_FOLDER: {RESULTS_FOLDER}")
+    print(f"\tSCRATCH_FOLDER: {SCRATCH_FOLDER}")
     print(f"\tN_JOBS: {N_JOBS}")
 
     if PARAMS_FILE is not None:
-        print(f"\nUsing custom params file: {PARAMS_FILE}")
+        print(f"\nUsing custom parameter file: {PARAMS_FILE}")
         with open(PARAMS_FILE, "r") as f:
             processing_params = json.load(f)
+    elif PARAMS_STR is not None:
+        processing_params = json.loads(PARAMS_STR)
     else:
         with open("processing_params.json", "r") as f:
             processing_params = json.load(f)
@@ -150,8 +164,8 @@ if __name__ == "__main__":
 
     # set paths
     data_folder = DATA_FOLDER
-    scratch_folder = Path("../scratch")
-    results_folder = Path("../results")
+    scratch_folder = SCRATCH_FOLDER
+    results_folder = RESULTS_FOLDER
 
     if scratch_folder.is_dir():
         shutil.rmtree(scratch_folder)

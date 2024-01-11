@@ -37,11 +37,16 @@ The scripts also support the same options as follows:
 - `--max-bad-channel-fraction`: Maximum fraction of bad channels to remove. If more than this fraction, processing is skipped
 - `--debug-duration`: Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled
 
-In addition, the scripts accept the `--data-folder` option to modify the path of the data (by default `../data`) 
-and a `--n-jobs` parameter to control the maximum number of jobs used for parallelization.
+In addition, the scripts accept the following configuration parameters:
+- `--data-folder`: option to modify the path of the data (by default `../data`) 
+- `--results-folder`: option to modify the path of the results (by default `../results`) 
+- `--scratch-folder`: option to modify the path of the scratch (by default `../scratch`), used to store temporary files
+- `--n-jobs`: parameter to control the maximum number of jobs used for parallelization.
+- `--params-file`: path to a JSON file to specify parameters
+- `--params-str`: JSON-formatted string with custom parameters
 
-Finally, the `--params-file`/`--params-str` allows one to specify the location of a JSON file or a JSON-formatted string with custom parameters to be used for the processing. 
-Default parameters are used in case this option is not specified and can be found in the `code/processing_params.json` file.
+> **_NOTES ON PARAMETERS:_** In case `--params-file`/`--params-str` are not specified, default parameters are used 
+(see `code/processing_params.json` file).
 
 For example, one could run:
 ```bash

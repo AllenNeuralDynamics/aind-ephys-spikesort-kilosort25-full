@@ -16,6 +16,7 @@ from datetime import datetime
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+
 matplotlib.use("agg")
 
 # SPIKEINTERFACE
@@ -83,10 +84,16 @@ debug_duration_help = (
 debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
 debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
 
-parser.add_argument("--data-folder", default="../data", help="Custom data folder for input data")
+parser.add_argument("--data-folder", default="../data", help="Custom data folder (default ../data)")
+parser.add_argument("--results-folder", default="../results", help="Custom results folder (default ../results)")
+parser.add_argument("--scratch-folder", default="../data", help="Custom scratch folder (default ../scratch)")
+
 n_jobs_help = "Number of jobs to use for parallel processing. Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores"
 parser.add_argument("--n-jobs", default="-1", help=n_jobs_help)
-parser.add_argument("--params-file", default=None, help="Optional json file with parameters")
+
+params_group = parser.add_mutually_exclusive_group()
+params_group.add_argument("--params-file", default=None, help="Optional json file with parameters")
+params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
 
 
 if __name__ == "__main__":
@@ -103,8 +110,11 @@ if __name__ == "__main__":
     MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
     DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
     DATA_FOLDER = Path(args.data_folder)
+    RESULTS_FOLDER = Path(args.results_folder)
+    SCRATCH_FOLDER = Path(args.scratch_folder)
     N_JOBS = int(args.n_jobs) if not args.n_jobs.startswith("0.") else float(args.n_jobs)
     PARAMS_FILE = args.params_file
+    PARAMS_STR = args.params_str
 
     print(f"Running preprocessing with the following parameters:")
     print(f"\tCONCATENATE: {CONCAT}")
@@ -113,12 +123,16 @@ if __name__ == "__main__":
     print(f"\tREMOVE_BAD_CHANNELS: {REMOVE_BAD_CHANNELS}")
     print(f"\tMAX BAD CHANNEL FRACTION: {MAX_BAD_CHANNEL_FRACTION}")
     print(f"\tDATA_FOLDER: {DATA_FOLDER}")
+    print(f"\tRESULTS_FOLDER: {RESULTS_FOLDER}")
+    print(f"\tSCRATCH_FOLDER: {SCRATCH_FOLDER}")
     print(f"\tN_JOBS: {N_JOBS}")
 
     if PARAMS_FILE is not None:
-        print(f"\nUsing custom params file: {PARAMS_FILE}")
+        print(f"\nUsing custom parameter file: {PARAMS_FILE}")
         with open(PARAMS_FILE, "r") as f:
             processing_params = json.load(f)
+    elif PARAMS_STR is not None:
+        processing_params = json.loads(PARAMS_STR)
     else:
         with open("processing_params.json", "r") as f:
             processing_params = json.load(f)
@@ -130,7 +144,6 @@ if __name__ == "__main__":
     quality_metrics_params = processing_params["quality_metrics"]
     curation_params = processing_params["curation"]
     visualization_params = processing_params["visualization"]
-
 
     if DEBUG:
         print(f"\nDEBUG ENABLED - Only running with {DEBUG_DURATION} seconds\n")
@@ -149,8 +162,8 @@ if __name__ == "__main__":
 
     # set paths
     data_folder = DATA_FOLDER
-    scratch_folder = Path("../scratch")
-    results_folder = Path("../results")
+    scratch_folder = SCRATCH_FOLDER
+    results_folder = RESUTLTS_FOLDER
 
     if scratch_folder.is_dir():
         shutil.rmtree(scratch_folder)
@@ -163,7 +176,6 @@ if __name__ == "__main__":
     if tmp_folder.is_dir():
         shutil.rmtree(tmp_folder)
     tmp_folder.mkdir()
-
 
     # SET DEFAULT JOB KWARGS
     job_kwargs["n_jobs"] = N_JOBS
@@ -236,22 +248,17 @@ if __name__ == "__main__":
                 else:
                     recording_ps_full = recording
 
-                recording_hp_full = spre.highpass_filter(
-                    recording_ps_full, **preprocessing_params["highpass_filter"]
-                )
+                recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
                 preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
                     dict(highpass=recording_hp_full)
                 )
 
                 skip_processing = False
-                if (
-                    recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"]
-                    and not DEBUG
-                ):
-                    print(
-                        f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing"
+                if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
+                    print(f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing")
+                    preprocessing_notes += (
+                        f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
                     )
-                    preprocessing_notes += f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
                     skip_processing = True
                 if not recording.has_channel_location():
                     print(f"\tRecording does not have channel locations. Skipping further processing")
@@ -280,9 +287,7 @@ if __name__ == "__main__":
 
                     skip_processing = False
                     max_bad_channel_fraction = preprocessing_params["max_bad_channel_fraction"]
-                    if len(all_bad_channel_ids) >= int(
-                        max_bad_channel_fraction * recording.get_num_channels()
-                    ):
+                    if len(all_bad_channel_ids) >= int(max_bad_channel_fraction * recording.get_num_channels()):
                         print(
                             f"\tMore than {max_bad_channel_fraction * 100}% bad channels ({len(all_bad_channel_ids)}). "
                             f"Skipping further processing for this recording."
@@ -330,9 +335,7 @@ if __name__ == "__main__":
                             preprocessing_notes += (
                                 f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                             )
-                        recording_saved = recording_processed.save(
-                            folder=preprocessed_output_folder / recording_name
-                        )
+                        recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
                         recording_drift = recording_saved
                 if skip_processing:
                     # in this case, processed timeseries will not be visualized
