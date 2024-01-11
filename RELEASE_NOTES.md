@@ -1,10 +1,10 @@
 # Release notes
 
-## v3.0 - Jan 10, 2024
+## v3.0 - Jan 11, 2024
 
-- update to `aind-data-schema==0.22.2`
-- change path to precurated output from the `sorting_precurated` to `curated` folder
-- add ArgumentParser to be able to pass discrete command lines
+- **change path to precurated output from the `sorting_precurated` to `curated` folder**
+- update to `aind-data-schema==0.23.1`
+- add `ArgumentParser`` to be able to pass discrete command line arguments
 - extended available CLI arguments to control removal of out/bad channels and max fraction of bad channels
 - some renaming:
     - `preprocessing_strategy` -> `denoising_strategy`

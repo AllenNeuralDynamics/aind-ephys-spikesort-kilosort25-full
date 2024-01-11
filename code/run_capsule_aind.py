@@ -120,7 +120,10 @@ debug_duration_group.add_argument("static_debug_duration", nargs="?", default="3
 
 n_jobs_help = "Number of jobs to use for parallel processing. Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores"
 parser.add_argument("--n-jobs", default="-1", help=n_jobs_help)
-parser.add_argument("--params-str", default=None, help="Optional json string with parameters")
+
+params_group = parser.add_mutually_exclusive_group()
+params_group.add_argument("--params-file", default=None, help="Optional json file with parameters")
+params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
 
 
 if __name__ == "__main__":
@@ -137,6 +140,7 @@ if __name__ == "__main__":
     MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
     DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
     N_JOBS = int(args.n_jobs) if not args.n_jobs.startswith("0.") else float(args.n_jobs)
+    PARAMS_FILE = args.params_file
     PARAMS_STR = args.params_str
 
     # TODO: add motion correction
@@ -144,7 +148,7 @@ if __name__ == "__main__":
     # COMPUTE_MOTION = True if motion_arg != "skip" else False
     # APPLY_MOTION = True if motion_arg == "apply" else False
 
-    print(f"Running preprocessing with the following parameters:")
+    print(f"Running processing with the following parameters:")
     print(f"\tCONCATENATE: {CONCAT}")
     print(f"\tDENOISING_STRATEGY: {DENOISING_STRATEGY}")
     print(f"\tREMOVE_OUT_CHANNELS: {REMOVE_OUT_CHANNELS}")
@@ -155,8 +159,11 @@ if __name__ == "__main__":
     # print(f"\tCOMPUTE_MOTION: {COMPUTE_MOTION}")
     # print(f"\tAPPLY_MOTION: {APPLY_MOTION}")
 
-    if PARAMS_STR is not None:
-        print(f"\nUsing custom params JSON string")
+    if PARAMS_FILE is not None:
+        print(f"\nUsing custom parameter file: {PARAMS_FILE}")
+        with open(PARAMS_FILE, "r") as f:
+            processing_params = json.load(f)
+    elif PARAMS_STR is not None:
         processing_params = json.loads(PARAMS_STR)
     else:
         with open("processing_params.json", "r") as f:
@@ -193,13 +200,6 @@ if __name__ == "__main__":
     data_folder = Path("../data")
     scratch_folder = Path("../scratch")
     results_folder = Path("../results")
-
-    if scratch_folder.is_dir():
-        shutil.rmtree(scratch_folder)
-    scratch_folder.mkdir(exist_ok=True)
-    if results_folder.is_dir():
-        shutil.rmtree(results_folder)
-    results_folder.mkdir(exist_ok=True)
 
     tmp_folder = results_folder / "tmp"
     if tmp_folder.is_dir():
@@ -617,7 +617,7 @@ if __name__ == "__main__":
 
         # QUALITY METRICS
         print("\tComputing quality metrics")
-        qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
+        qm = sqm.compute_quality_metrics(we, **quality_metrics_params)
 
     t_postprocessing_end = time.perf_counter()
     elapsed_time_postprocessing = np.round(t_postprocessing_end - t_postprocessing_start, 2)
@@ -951,7 +951,10 @@ if __name__ == "__main__":
     )
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
-    # construct processing.json
+    # remove tmp_folder
+    shutil.rmtree(tmp_folder)
+
+    # construct metadata files
     ephys_data_processes = [
         preprocessing_process,
         spikesorting_process,
@@ -1008,9 +1011,6 @@ if __name__ == "__main__":
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
         f.write(derived_data_description.model_dump_json(indent=3))
-
-    # remove tmp_folder
-    shutil.rmtree(tmp_folder)
 
     t_global_end = time.perf_counter()
     elapsed_time_global = np.round(t_global_end - t_global_start, 2)

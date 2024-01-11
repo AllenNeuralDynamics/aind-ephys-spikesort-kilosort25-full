@@ -104,7 +104,7 @@ Finally, we can start the container (`ghcr.io/allenneuraldynamics/aind-ephys-spi
 from the repo base folder (`aind-ephys-spikesort-kilosort25-full`):
 ```bash
 chmod +x ./code/run_nwb
-docker run -it --gpus all -v .:/capsule --shm-size 8G \
+docker run -it --gpus all -v .:/capsule:ro --shm-size 8G \
     --env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY \
     ghcr.io/allenneuraldynamics/aind-ephys-spikesort-kilosort25-full:latest
 ```
@@ -115,11 +115,12 @@ cd /capsule/code
 ./run_nwb # + optional parameters (e.g., --debug)
 ```
 
-> **_NOTES ON DOCKER RUN:_**
-> The `--gpu all` flag is required to make the GPU available to the container (and Kilosort).
-> The `--shm-size 8G` flag is required to increase the shared memory size (default is 64M), which is used internally for parallel processing.
-> The `-v .:/capsule` option mounts the current folder `.` to the `/capsule` folder in the container, so that the data and scripts are available.
-> The `--env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY` flags are required to set up the cloud visualization with FigURL (see [Notes on visualization](#notes-on-visualization) for more details)
+> **_NOTES ON DOCKER RUN:_**  
+> The `--gpu all` flag is required to make the GPU available to the container (and Kilosort).  
+> The `--shm-size 8G` flag is required to increase the shared memory size (default is 64M), which is used internally for parallel processing.  
+> The `-v .:/capsule` option mounts the current folder `.` to the `/capsule` folder in the container, so that the data and scripts are available.  
+> **THE FOLDER IS NOT MOUNTED IN READ-ONLY MODE, so be careful when deleting files in the container.**  
+> The `--env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY` flags are required to set up the cloud visualization with FigURL (see [Notes on visualization](#notes-on-visualization) for more details)  
 
 
 # Code Ocean deployment

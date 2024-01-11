@@ -86,7 +86,7 @@ debug_duration_group.add_argument("static_debug_duration", nargs="?", default="3
 
 parser.add_argument("--data-folder", default="../data", help="Custom data folder (default ../data)")
 parser.add_argument("--results-folder", default="../results", help="Custom results folder (default ../results)")
-parser.add_argument("--scratch-folder", default="../data", help="Custom scratch folder (default ../scratch)")
+parser.add_argument("--scratch-folder", default="../scratch", help="Custom scratch folder (default ../scratch)")
 
 n_jobs_help = "Number of jobs to use for parallel processing. Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores"
 parser.add_argument("--n-jobs", default="-1", help=n_jobs_help)
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     # set paths
     data_folder = DATA_FOLDER
     scratch_folder = SCRATCH_FOLDER
-    results_folder = RESUTLTS_FOLDER
+    results_folder = RESULTS_FOLDER
 
     if scratch_folder.is_dir():
         shutil.rmtree(scratch_folder)
