@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # COMPUTE_MOTION = True if motion_arg != "skip" else False
     # APPLY_MOTION = True if motion_arg == "apply" else False
 
-    print(f"Running preprocessing with the following parameters:")
+    print(f"Running processing with the following parameters:")
     print(f"\tCONCATENATE: {CONCAT}")
     print(f"\tDENOISING_STRATEGY: {DENOISING_STRATEGY}")
     print(f"\tREMOVE_OUT_CHANNELS: {REMOVE_OUT_CHANNELS}")
@@ -944,7 +944,10 @@ if __name__ == "__main__":
     )
     print(f"VISUALIZATION time: {elapsed_time_visualization}s")
 
-    # construct processing.json
+    # remove tmp_folder
+    shutil.rmtree(tmp_folder)
+
+    # construct metadata files
     ephys_data_processes = [
         preprocessing_process,
         spikesorting_process,
@@ -1001,9 +1004,6 @@ if __name__ == "__main__":
     # save processing files to output
     with (results_folder / "data_description.json").open("w") as f:
         f.write(derived_data_description.model_dump_json(indent=3))
-
-    # remove tmp_folder
-    shutil.rmtree(tmp_folder)
 
     t_global_end = time.perf_counter()
     elapsed_time_global = np.round(t_global_end - t_global_start, 2)
