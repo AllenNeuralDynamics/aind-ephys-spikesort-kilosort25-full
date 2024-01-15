@@ -1018,7 +1018,10 @@ if __name__ == "__main__":
         status = "success"
 
     except Exception as e:
-        print(f"\nPIPELINE ERROR:\n\"{e}\"")
+        import traceback
+
+        error = "".join(traceback.format_exception(e))
+        print(f"\nPIPELINE ERROR:\n\n{error}")
 
         # cleanup
         if tmp_folder.is_dir():
@@ -1030,7 +1033,7 @@ if __name__ == "__main__":
                 shutil.rmtree(p)
         # create an error txt
         error_file = results_folder / "error.txt"
-        error_file.write_text(f"PIPELINE ERROR:\n\"{e}\"")
+        error_file.write_text(f"PIPELINE ERROR:\n{error}")
         status = "error"
 
     t_global_end = time.perf_counter()
