@@ -137,8 +137,8 @@ if __name__ == "__main__":
     DENOISING_STRATEGY = args.denoising or args.static_denoising
     REMOVE_OUT_CHANNELS = False if args.no_remove_out_channels else args.static_remove_out_channels == "true"
     REMOVE_BAD_CHANNELS = False if args.no_remove_bad_channels else args.static_remove_bad_channels == "true"
-    MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
-    DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
+    MAX_BAD_CHANNEL_FRACTION = float(args.static_max_bad_channel_fraction or args.max_bad_channel_fraction)
+    DEBUG_DURATION = float(args.static_debug_duration or args.debug_duration)
     N_JOBS = int(args.n_jobs) if not args.n_jobs.startswith("0.") else float(args.n_jobs)
     PARAMS_FILE = args.params_file
     PARAMS_STR = args.params_str
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     tmp_folder = results_folder / "tmp"
     if tmp_folder.is_dir():
         shutil.rmtree(tmp_folder)
-    tmp_folder.mkdir()
+    tmp_folder.mkdir(parents=True)
 
     # SET DEFAULT JOB KWARGS
     si.set_global_job_kwargs(**job_kwargs)
