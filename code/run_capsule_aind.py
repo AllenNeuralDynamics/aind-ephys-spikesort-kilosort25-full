@@ -1032,7 +1032,7 @@ if __name__ == "__main__":
             elif p.is_dir():
                 shutil.rmtree(p)
         # create an error txt
-        error_file = results_folder / "error.txt"
+        error_file = results_folder / "error.log"
         error_file.write_text(f"PIPELINE ERROR:\n{error}")
         status = "error"
 
