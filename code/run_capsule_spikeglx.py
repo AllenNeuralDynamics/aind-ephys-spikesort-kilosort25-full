@@ -794,7 +794,7 @@ if __name__ == "__main__":
     except Exception as e:
         import traceback
 
-        error = "".join(traceback.format_exception(e))
+        error = "".join(traceback.format_exc())
         print(f"\nPIPELINE ERROR:\n\n{error}")
 
         # cleanup

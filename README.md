@@ -104,7 +104,7 @@ Finally, we can start the container (`ghcr.io/allenneuraldynamics/aind-ephys-spi
 from the repo base folder (`aind-ephys-spikesort-kilosort25-full`):
 ```bash
 chmod +x ./code/run_nwb
-docker run -it --gpus all -v .:/capsule:ro --shm-size 8G \
+docker run -it --gpus all -v .:/capsule --shm-size 8G \
     --env KACHERY_ZONE --env KACHERY_CLOUD_CLIENT_ID --env KACHERY_CLOUD_PRIVATE_KEY \
     ghcr.io/allenneuraldynamics/aind-ephys-spikesort-kilosort25-full:latest
 ```
