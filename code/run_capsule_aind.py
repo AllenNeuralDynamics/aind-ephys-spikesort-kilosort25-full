@@ -209,6 +209,7 @@ if __name__ == "__main__":
     # this is the main try-except clause to clean up the output folders in case of failures
     try:
         # SET DEFAULT JOB KWARGS
+        job_kwargs["n_jobs"] = N_JOBS
         si.set_global_job_kwargs(**job_kwargs)
         print(f"Global job kwargs: {si.get_global_job_kwargs()}")
 
