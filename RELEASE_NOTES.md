@@ -11,6 +11,10 @@
     - `max_bad_channel_fraction_to_remove` - > `max_bad_channel_fraction`
 - better error handling
 
+### v2.2 - Dec 11, 2023
+
+- fix creation of DerivedDataDescription from scratch
+
 ### v2.1 - Dec 7, 2023
 
 - fix visualization of drift map for short recordings using peak pipeline
