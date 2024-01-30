@@ -1,23 +1,24 @@
-FROM spikeinterface/kilosort2_5-compiled-base:latest
+# hash:sha256:3d93e55ba197145ecd90ceea026843aa7a5dca9b09d1c8b203f621daea182242
+FROM registry.codeocean.allenneuraldynamics.org/codeocean/kilosort2_5-compiled-base:latest
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# install libvips
+ARG GIT_ASKPASS
+ARG GIT_ACCESS_TOKEN
+COPY git-askpass /
+
 RUN apt-get update \
-    && apt-get install -y libvips libvips-dev libvips-tools libtiff5-dev
-# correct mapping to make libvips work
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libffi.so.7
-RUN rm /opt/matlabruntime/R2022b/bin/glnxa64/libtiff.so.5
-RUN ln -s /usr/lib/x86_64-linux-gnu/libtiff.so.5.2.4 /opt/matlabruntime/R2022b/bin/glnxa64/libtiff.so.5
+    && apt-get install -y --no-install-recommends \
+        fonts-freefont-ttf=20120503-7 \
+        libffi-dev=3.2.1-8 \
+        libvips \
+        msttcorefonts \
+    && rm -rf /var/lib/apt/lists/*
 
-
-# install default fonts
-RUN apt-get install -y msttcorefonts fonts-freefont-ttf
-
-RUN pip install -U --no-cache-dir --ignore-installed jupyter
-
-# needed for correct functioning of sortingview
-RUN pip install -U --no-cache-dir --ignore-installed \
+RUN pip install -U --no-cache-dir \
+    aind-data-schema==0.19.1 \
+    cryptography==41.0.5 \
+    jupyter==1.0.0 \
     pyvips==2.2.1 \
-    pynwb==2.5.0 \
-    spikeinterface[full,widgets]==0.99.1
+    spikeinterface[full,widgets]==0.99.1 \
+    wavpack-numcodecs==0.1.5
