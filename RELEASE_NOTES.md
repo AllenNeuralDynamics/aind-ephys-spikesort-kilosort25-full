@@ -1,6 +1,7 @@
 # Release notes
 
-## v3.0 - Jan 18, 2024
+
+## v3.0 - Feb 3, 2024
 
 - **change path to precurated output from the `sorting_precurated` to `curated` folder**
 - update to `aind-data-schema==0.23.1`
@@ -10,6 +11,10 @@
     - `preprocessing_strategy` -> `denoising_strategy`
     - `max_bad_channel_fraction_to_remove` - > `max_bad_channel_fraction`
 - better error handling
+
+### v2.2 - Dec 11, 2023
+
+- fix creation of DerivedDataDescription from scratch
 
 ### v2.1 - Dec 7, 2023
 
