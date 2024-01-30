@@ -2,8 +2,4 @@
 set -ex
 
 # This is the master script for the capsule. When you click "Reproducible Run", the code in this file will execute.
-<<<<<<< HEAD:code/run
-python -u run_capsule_aind.py "$@"
-=======
 python -u run_capsule_nwb.py "$@"
->>>>>>> 56a6e25cac21f788caff2e57184dbf52291f9d83:code/run_nwb
