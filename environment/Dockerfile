@@ -1,4 +1,4 @@
-# hash:sha256:3d93e55ba197145ecd90ceea026843aa7a5dca9b09d1c8b203f621daea182242
+# hash:sha256:a22e567f77d3078b482a068b32eeed530556bcd56e006a6a93d7ea9bc2df0f6a
 FROM registry.codeocean.allenneuraldynamics.org/codeocean/kilosort2_5-compiled-base:latest
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -17,8 +17,11 @@ RUN apt-get update \
 
 RUN pip install -U --no-cache-dir \
     aind-data-schema==0.19.1 \
-    cryptography==41.0.5 \
+    cryptography==42.0.2 \
     jupyter==1.0.0 \
     pyvips==2.2.1 \
     spikeinterface[full,widgets]==0.99.1 \
     wavpack-numcodecs==0.1.5
+
+COPY postInstall /
+RUN /postInstall

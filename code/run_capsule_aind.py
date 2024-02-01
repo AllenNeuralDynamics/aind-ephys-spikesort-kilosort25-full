@@ -119,10 +119,14 @@ debug_duration_group.add_argument("static_debug_duration", nargs="?", default="3
 # motion_correction_group.add_argument("static_motion", nargs="?", default="compute", help=motion_correction_help)
 
 n_jobs_help = "Number of jobs to use for parallel processing. Default is -1 (all available cores). It can also be a float between 0 and 1 to use a fraction of available cores"
-parser.add_argument("--n-jobs", default="-1", help=n_jobs_help)
+n_jobs_group = parser.add_mutually_exclusive_group()
+n_jobs_group.add_argument("--n-jobs", default="-1", help=n_jobs_help)
+n_jobs_group.add_argument("static_n_jobs", nargs="?", help=n_jobs_help)
 
 params_group = parser.add_mutually_exclusive_group()
-params_group.add_argument("--params-file", default=None, help="Optional json file with parameters")
+params_file_help = "Optional json file with parameters"
+params_group.add_argument("--params-file", default=None, help=params_file_help)
+params_group.add_argument("static_params_file", nargs="?", help=params_file_help)
 params_group.add_argument("--params-str", default=None, help="Optional json string with parameters")
 
 
@@ -139,9 +143,13 @@ if __name__ == "__main__":
     REMOVE_BAD_CHANNELS = False if args.no_remove_bad_channels else args.static_remove_bad_channels == "true"
     MAX_BAD_CHANNEL_FRACTION = float(args.static_max_bad_channel_fraction or args.max_bad_channel_fraction)
     DEBUG_DURATION = float(args.static_debug_duration or args.debug_duration)
-    N_JOBS = int(args.n_jobs) if not args.n_jobs.startswith("0.") else float(args.n_jobs)
-    PARAMS_FILE = args.params_file
+    N_JOBS = args.static_n_jobs or args.n_jobs
+    N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
+    PARAMS_FILE = args.static_params_file or args.params_file
     PARAMS_STR = args.params_str
+
+    if PARAMS_FILE is not None and PARAMS_FILE == "":
+        PARAMS_FILE = None
 
     # TODO: add motion correction
     # motion_arg = args.motion or args.static_motion
@@ -503,6 +511,9 @@ if __name__ == "__main__":
                 # save log to results
                 sorting_output_folder.mkdir(parents=True)
                 shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
+                print(f"Spike sorting for {recording_name} failed")
+                continue
+
             print(f"\tRaw sorting output: {sorting}")
             spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
             if sorting_params is None:
@@ -562,7 +573,9 @@ if __name__ == "__main__":
 
             # make sure we have spikesorted output for the block-stream
             recording_sorted_folder = spikesorted_folder / recording_name
-            assert recording_sorted_folder.is_dir(), f"Could not find spikesorted output for {recording_name}"
+            if not recording_sorted_folder.is_dir():
+                print(f"Could not find spikesorted output for {recording_name}")
+                continue
             sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
 
             # first extract some raw waveforms in memory to deduplicate based on peak alignment
@@ -605,8 +618,6 @@ if __name__ == "__main__":
             amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
             print("\tComputing unit locations")
             unit_locs = spost.compute_unit_locations(we, **postprocessing_params["locations"])
-            print("\tComputing spike locations")
-            spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
             print("\tComputing correlograms")
             corr = spost.compute_correlograms(we, **postprocessing_params["correlograms"])
             print("\tComputing ISI histograms")
@@ -617,6 +628,13 @@ if __name__ == "__main__":
             tm = spost.compute_template_metrics(we, **postprocessing_params["template_metrics"])
             print("\tComputing PCA")
             pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
+
+            # spike locations with monopolar triangulation is error-prone, protect against failures
+            try:
+                print("\tComputing spike locations")
+                spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
+            except:
+                print(f"\tSpike locations computation failed")
 
             # QUALITY METRICS
             print("\tComputing quality metrics")
@@ -723,15 +741,19 @@ if __name__ == "__main__":
             alpha = visualization_params["drift"]["alpha"]
 
             # use spike locations
+            spike_locations_available = False
             if recording_folder.is_dir():
                 print(f"\tVisualizing drift maps using spike sorted data")
                 we = si.load_waveforms(recording_folder)
-                recording = we.recording
-                peaks = we.sorting.to_spike_vector()
-                peak_locations = we.load_extension("spike_locations").get_data()
-                peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
-            # otherwise detect peaks
-            else:
+                if we.has_extension("spike_locations"):
+                    spike_locations_available = True
+                    recording = we.recording
+                    peaks = we.sorting.to_spike_vector()
+                    peak_locations = we.load_extension("spike_locations").get_data()
+                    peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
+
+            # if spike locations are not available, detect and localize peaks
+            if not spike_locations_available:
                 from spikeinterface.core.node_pipeline import ExtractDenseWaveforms, run_node_pipeline
                 from spikeinterface.sortingcomponents.peak_detection import DetectPeakLocallyExclusive
                 from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
