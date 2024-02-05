@@ -1,5 +1,9 @@
 # Release notes
 
+### v2.3 - Jan 31, 2024
+
+- better handling of spike sorting failures
+
 ### v2.2 - Dec 11, 2023
 
 - fix creation of `DerivedDataDescription` from scratch

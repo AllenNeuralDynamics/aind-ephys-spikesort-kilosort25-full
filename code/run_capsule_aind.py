@@ -543,8 +543,13 @@ if __name__ == "__main__":
             )
         except Exception as e:
             # save log to results
-            sorting_output_folder.mkdir()
-            shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
+            sorting_output_folder.mkdir(parents=True, exist_ok=True)
+            shutil.copy(
+                spikesorted_raw_output_folder / recording_name / "spikeinterface_log.json", sorting_output_folder
+            )
+            print(f"Spike sorting for {recording_name} failed!")
+            continue
+
         print(f"\tRaw sorting output: {sorting}")
         spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
         if sorting_params is None:
@@ -604,8 +609,14 @@ if __name__ == "__main__":
 
         # make sure we have spikesorted output for the block-stream
         recording_sorted_folder = spikesorted_folder / recording_name
-        assert recording_sorted_folder.is_dir(), f"Could not find spikesorted output for {recording_name}"
-        sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
+        if not recording_sorted_folder.is_dir():
+            print(f"Could not find spikesorted output for {recording_name}")
+            continue
+        try:
+            sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
+        except ValueError:
+            print(f"Spike sorting for {recording_name} failed. Skipping postprocessing")
+            continue
 
         # first extract some raw waveforms in memory to deduplicate based on peak alignment
         wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
@@ -647,8 +658,6 @@ if __name__ == "__main__":
         amps = spost.compute_spike_amplitudes(we, **postprocessing_params["spike_amplitudes"])
         print("\tComputing unit locations")
         unit_locs = spost.compute_unit_locations(we, **postprocessing_params["locations"])
-        print("\tComputing spike locations")
-        spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
         print("\tComputing correlograms")
         corr = spost.compute_correlograms(we, **postprocessing_params["correlograms"])
         print("\tComputing ISI histograms")
@@ -659,6 +668,16 @@ if __name__ == "__main__":
         tm = spost.compute_template_metrics(we, **postprocessing_params["template_metrics"])
         print("\tComputing PCA")
         pc = spost.compute_principal_components(we, **postprocessing_params["principal_components"])
+
+        # spike locations with monopolar triangulation is error-prone, protect against failures
+        try:
+            print("\tComputing spike locations")
+            spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
+        except:
+            # clean up spike locations folder
+            we.delete_extension("spike_locations")
+            print(f"\tSpike locations computation failed")
+
         print("\tComputing quality metrics")
         qm = sqm.compute_quality_metrics(we, **postprocessing_params["quality_metrics"])
 
@@ -763,15 +782,19 @@ if __name__ == "__main__":
         alpha = visualization_params["drift"]["alpha"]
 
         # use spike locations
+        spike_locations_available = False
         if recording_folder.is_dir():
             print(f"\tVisualizing drift maps using spike sorted data")
             we = si.load_waveforms(recording_folder)
-            recording = we.recording
-            peaks = we.sorting.to_spike_vector()
-            peak_locations = we.load_extension("spike_locations").get_data()
-            peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
-        # otherwise detect peaks
-        else:
+            if we.is_extension("spike_locations"):
+                spike_locations_available = True
+                recording = we.recording
+                peaks = we.sorting.to_spike_vector()
+                peak_locations = we.load_extension("spike_locations").get_data()
+                peak_amps = np.concatenate(we.load_extension("spike_amplitudes").get_data())
+
+        # if spike locations are not available, detect and localize peaks
+        if not spike_locations_available:
             from spikeinterface.core.node_pipeline import ExtractDenseWaveforms, run_node_pipeline
             from spikeinterface.sortingcomponents.peak_detection import DetectPeakLocallyExclusive
             from spikeinterface.sortingcomponents.peak_localization import LocalizeCenterOfMass
@@ -1042,7 +1065,7 @@ if __name__ == "__main__":
         data_description_dict["platform"] = dd.Platform.ECEPHYS
         data_description_dict["subject_id"] = subject_id
         data_description = dd.DataDescription(**data_description_dict)
-        
+
         derived_data_description = dd.DerivedDataDescription.from_data_description(
             data_description=data_description, process_name=process_name
         )
