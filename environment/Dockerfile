@@ -1,4 +1,4 @@
-# hash:sha256:a22e567f77d3078b482a068b32eeed530556bcd56e006a6a93d7ea9bc2df0f6a
+# hash:sha256:e16a0c310288830acecc5999715f009ad708a26884e6e83eb7edcd26c9156643
 FROM registry.codeocean.allenneuraldynamics.org/codeocean/kilosort2_5-compiled-base:latest
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -20,8 +20,5 @@ RUN pip install -U --no-cache-dir \
     cryptography==42.0.2 \
     jupyter==1.0.0 \
     pyvips==2.2.1 \
-    spikeinterface[full,widgets]==0.99.1 \
+    spikeinterface[full,widgets]==0.100.0 \
     wavpack-numcodecs==0.1.5
-
-COPY postInstall /
-RUN /postInstall

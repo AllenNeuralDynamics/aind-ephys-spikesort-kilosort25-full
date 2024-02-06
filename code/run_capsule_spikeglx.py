@@ -441,7 +441,11 @@ if __name__ == "__main__":
             if not recording_sorted_folder.is_dir():
                 print(f"Could not find spikesorted output for {recording_name}")
                 continue
-            sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
+            try:
+                sorting = si.load_extractor(recording_sorted_folder.absolute().resolve())
+            except ValueError:
+                print(f"Spike sorting for {recording_name} failed. Skipping postprocessing")
+                continue
 
             # first extract some raw waveforms in memory to deduplicate based on peak alignment
             wf_dedup_folder = tmp_folder / "postprocessed" / recording_name
@@ -497,6 +501,7 @@ if __name__ == "__main__":
                 print("\tComputing spike locations")
                 spike_locs = spost.compute_spike_locations(we, **postprocessing_params["locations"])
             except:
+                we.delete_extension("spike_locations")
                 print(f"\tSpike locations computation failed")
 
             print("\tComputing PCA")
