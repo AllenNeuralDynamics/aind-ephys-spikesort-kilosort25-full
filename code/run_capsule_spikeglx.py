@@ -81,8 +81,8 @@ debug_duration_group = parser.add_mutually_exclusive_group()
 debug_duration_help = (
     "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
 )
-debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
-debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
+debug_duration_group.add_argument("--debug-duration", help=debug_duration_help)
+debug_duration_group.add_argument("static_debug_duration", nargs="?", default=30, help=debug_duration_help)
 
 parser.add_argument("--data-folder", default="../data", help="Custom data folder (default ../data)")
 parser.add_argument("--results-folder", default="../results", help="Custom results folder (default ../results)")
@@ -250,17 +250,22 @@ if __name__ == "__main__":
                     else:
                         recording_ps_full = recording
 
-                    recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
+                    recording_hp_full = spre.highpass_filter(
+                        recording_ps_full, **preprocessing_params["highpass_filter"]
+                    )
                     preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
                         dict(highpass=recording_hp_full)
                     )
 
                     skip_processing = False
-                    if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
-                        print(f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing")
-                        preprocessing_notes += (
-                            f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
+                    if (
+                        recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"]
+                        and not DEBUG
+                    ):
+                        print(
+                            f"\tRecording is too short ({recording.get_total_duration()}s). Skipping further processing"
                         )
+                        preprocessing_notes += f"\n- Recording is too short ({recording.get_total_duration()}s). Skipping further processing\n"
                         skip_processing = True
                     if not recording.has_channel_location():
                         print(f"\tRecording does not have channel locations. Skipping further processing")
@@ -337,7 +342,9 @@ if __name__ == "__main__":
                                 preprocessing_notes += (
                                     f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                                 )
-                            recording_saved = recording_processed.save(folder=preprocessed_output_folder / recording_name)
+                            recording_saved = recording_processed.save(
+                                folder=preprocessed_output_folder / recording_name
+                            )
                             recording_drift = recording_saved
                     if skip_processing:
                         # in this case, processed timeseries will not be visualized
@@ -390,7 +397,9 @@ if __name__ == "__main__":
             except Exception as e:
                 # save log to results
                 sorting_output_folder.mkdir(parents=True)
-                shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
+                shutil.copy(
+                    spikesorted_raw_output_folder / recording_name / "spikeinterface_log.json", sorting_output_folder
+                )
                 print(f"Spike sorting for {recording_name} failed")
                 continue
 
@@ -655,7 +664,9 @@ if __name__ == "__main__":
                 ax_drift.scatter(x_sub, y_sub, s=1, c=colors, alpha=alpha)
                 ax_drift.set_xlabel("time (s)", fontsize=12)
                 ax_drift.set_ylabel("depth ($\mu$m)", fontsize=12)
-                ax_drift.set_xlim(0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency)
+                ax_drift.set_xlim(
+                    0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency
+                )
                 ax_drift.set_ylim(ylim)
                 ax_drift.spines["top"].set_visible(False)
                 ax_drift.spines["right"].set_visible(False)
@@ -701,7 +712,8 @@ if __name__ == "__main__":
                         t_starts = np.linspace(0, segment_duration, n_snippets_per_seg + 2)[1:-1]
                         for t_start in t_starts:
                             time_range = np.round(
-                                np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]), 1
+                                np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]),
+                                1,
                             )
                             w_full = sw.plot_timeseries(
                                 recording_full_dict,

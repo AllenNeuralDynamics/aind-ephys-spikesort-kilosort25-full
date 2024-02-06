@@ -17,6 +17,7 @@ from packaging.version import parse
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+
 matplotlib.use("agg")
 
 # SPIKEINTERFACE
@@ -102,15 +103,15 @@ max_bad_channel_fraction_group.add_argument(
     "--max-bad-channel-fraction", default=0.5, help=max_bad_channel_fraction_help
 )
 max_bad_channel_fraction_group.add_argument(
-    "static_max_bad_channel_fraction", nargs="?", default="0.5", help=max_bad_channel_fraction_help
+    "static_max_bad_channel_fraction", nargs="?", help=max_bad_channel_fraction_help
 )
 
 debug_duration_group = parser.add_mutually_exclusive_group()
 debug_duration_help = (
     "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
 )
-debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
-debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
+debug_duration_group.add_argument("--debug-duration", help=debug_duration_help)
+debug_duration_group.add_argument("static_debug_duration", nargs="?", default=30, help=debug_duration_help)
 
 # TODO: add motion correction
 # motion_correction_group = parser.add_mutually_exclusive_group()
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     REMOVE_OUT_CHANNELS = False if args.no_remove_out_channels else args.static_remove_out_channels == "true"
     REMOVE_BAD_CHANNELS = False if args.no_remove_bad_channels else args.static_remove_bad_channels == "true"
     MAX_BAD_CHANNEL_FRACTION = float(args.static_max_bad_channel_fraction or args.max_bad_channel_fraction)
-    DEBUG_DURATION = float(args.static_debug_duration or args.debug_duration)
+    DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
     N_JOBS = args.static_n_jobs or args.n_jobs
     N_JOBS = int(N_JOBS) if not N_JOBS.startswith("0.") else float(N_JOBS)
     PARAMS_FILE = args.static_params_file or args.params_file
@@ -184,7 +185,6 @@ if __name__ == "__main__":
     quality_metrics_params = processing_params["quality_metrics"]
     curation_params = processing_params["curation"]
     visualization_params = processing_params["visualization"]
-
 
     if DEBUG:
         print(f"\nDEBUG ENABLED - Only running with {DEBUG_DURATION} seconds\n")
@@ -438,7 +438,9 @@ if __name__ == "__main__":
                                     preprocessing_notes += (
                                         f"\n- Removed {len(bad_channel_ids)} bad channels after preprocessing.\n"
                                     )
-                                recording_saved = recording_processed.save(folder=preprocessed_tmp_folder / recording_name)
+                                recording_saved = recording_processed.save(
+                                    folder=preprocessed_tmp_folder / recording_name
+                                )
                                 recording_processed.dump_to_json(
                                     preprocessed_output_folder / f"{recording_name}.json", relative_to=data_folder
                                 )
@@ -471,7 +473,7 @@ if __name__ == "__main__":
         ####### SPIKESORTING ########
         print("\n\nSPIKE SORTING")
         spikesorting_notes = ""
-        sorting_params = None
+        sorting_params = {}
 
         datetime_start_sorting = datetime.now()
         t_sorting_start = time.perf_counter()
@@ -486,7 +488,6 @@ if __name__ == "__main__":
             if not recording_folder.is_dir():
                 print(f"Skipping sorting for recording: {recording_name}")
                 spikesorting_notes += f"{recording_name}:\n- Skipped spike sorting.\n"
-                sorting_params = {}
                 continue
             print(f"Sorting recording: {recording_name}")
             recording = si.load_extractor(recording_folder)
@@ -518,8 +519,7 @@ if __name__ == "__main__":
 
             print(f"\tRaw sorting output: {sorting}")
             spikesorting_notes += f"{recording_name}:\n- KS2.5 found {len(sorting.unit_ids)} units, "
-            if sorting_params is None:
-                sorting_params = sorting.sorting_info["params"]
+            sorting_params = sorting.sorting_info["params"]
 
             # remove empty units
             sorting = sorting.remove_empty_units()
@@ -818,7 +818,9 @@ if __name__ == "__main__":
                 ax_drift.scatter(x_sub, y_sub, s=1, c=colors, alpha=alpha)
                 ax_drift.set_xlabel("time (s)", fontsize=12)
                 ax_drift.set_ylabel("depth ($\mu$m)", fontsize=12)
-                ax_drift.set_xlim(0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency)
+                ax_drift.set_xlim(
+                    0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency
+                )
                 ax_drift.set_ylim(ylim)
                 ax_drift.spines["top"].set_visible(False)
                 ax_drift.spines["right"].set_visible(False)
@@ -864,7 +866,8 @@ if __name__ == "__main__":
                         t_starts = np.linspace(0, segment_duration, n_snippets_per_seg + 2)[1:-1]
                         for t_start in t_starts:
                             time_range = np.round(
-                                np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]), 1
+                                np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]),
+                                1,
                             )
                             w_full = sw.plot_timeseries(
                                 recording_full_dict,
@@ -1000,6 +1003,14 @@ if __name__ == "__main__":
                 processing_dict = json.load(processing_file)
             # Allow for parsing earlier versions of Processing files
             processing_old = Processing.model_construct(**processing_dict)
+            # Protect against processing_pipeline.data_processes.outputs being None
+            if hasattr(processing_old, "processing_pipeline"):
+                processing_pipeline = processing_old.processing_pipeline
+                if "data_processes" in processing_pipeline:
+                    data_processes = processing_pipeline["data_processes"]
+                    for data_process in data_processes:
+                        if data_process["outputs"] is None:
+                            data_process["outputs"] = dict()
             processing = ProcessingUpgrade(processing_old).upgrade(processor_full_name=PIPELINE_MAINTAINER)
             processing.processing_pipeline.data_processes.append(ephys_data_processes)
         else:
