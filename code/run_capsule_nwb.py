@@ -83,8 +83,8 @@ debug_duration_group = parser.add_mutually_exclusive_group()
 debug_duration_help = (
     "Duration of clipped recording in debug mode. Default is 30 seconds. Only used if debug is enabled"
 )
-debug_duration_group.add_argument("--debug-duration", default=30, help=debug_duration_help)
-debug_duration_group.add_argument("static_debug_duration", nargs="?", default="30", help=debug_duration_help)
+debug_duration_group.add_argument("--debug-duration", help=debug_duration_help)
+debug_duration_group.add_argument("static_debug_duration", nargs="?", default=30, help=debug_duration_help)
 
 parser.add_argument("--data-folder", default="../data", help="Custom data folder (default ../data)")
 parser.add_argument("--results-folder", default="../results", help="Custom results folder (default ../results)")
@@ -250,7 +250,9 @@ if __name__ == "__main__":
                 recording_ps_full = recording
 
             recording_hp_full = spre.highpass_filter(recording_ps_full, **preprocessing_params["highpass_filter"])
-            preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(dict(highpass=recording_hp_full))
+            preprocessing_vizualization_data[recording_name]["timeseries"]["full"].update(
+                dict(highpass=recording_hp_full)
+            )
 
             skip_processing = False
             if recording.get_total_duration() < preprocessing_params["min_preprocessing_duration"] and not DEBUG:
@@ -297,7 +299,9 @@ if __name__ == "__main__":
                     if preprocessing_params["remove_out_channels"]:
                         print(f"\tRemoving {len(out_channel_ids)} out channels")
                         recording_rm_out = recording_hp_full.remove_channels(out_channel_ids)
-                        preprocessing_notes += f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
+                        preprocessing_notes += (
+                            f"{recording_name}:\n- Removed {len(out_channel_ids)} outside of the brain."
+                        )
                     else:
                         recording_rm_out = recording_hp_full
 
@@ -645,7 +649,9 @@ if __name__ == "__main__":
                 ax_drift.scatter(x_sub, y_sub, s=1, c=colors, alpha=alpha)
                 ax_drift.set_xlabel("time (s)", fontsize=12)
                 ax_drift.set_ylabel("depth ($\mu$m)", fontsize=12)
-                ax_drift.set_xlim(0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency)
+                ax_drift.set_xlim(
+                    0, recording.get_num_samples(segment_index=segment_index) / recording.sampling_frequency
+                )
                 ax_drift.set_ylim(ylim)
                 ax_drift.spines["top"].set_visible(False)
                 ax_drift.spines["right"].set_visible(False)
@@ -691,7 +697,8 @@ if __name__ == "__main__":
                         t_starts = np.linspace(0, segment_duration, n_snippets_per_seg + 2)[1:-1]
                         for t_start in t_starts:
                             time_range = np.round(
-                                np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]), 1
+                                np.array([t_start, t_start + visualization_params["timeseries"]["snippet_duration_s"]]),
+                                1,
                             )
                             w_full = sw.plot_timeseries(
                                 recording_full_dict,
