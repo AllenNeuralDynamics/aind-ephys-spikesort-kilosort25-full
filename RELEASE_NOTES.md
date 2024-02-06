@@ -1,5 +1,18 @@
 # Release notes
 
+
+## v3.0 - Feb 6, 2024
+
+- **change path to precurated output from the `sorting_precurated` to `curated` folder**
+- pin to `aind-data-schema==0.19.1`
+- update to `spikeinterface==0.100.0`
+- add `ArgumentParser`` to be able to pass discrete command line arguments
+- extended available CLI arguments to control removal of out/bad channels, max fraction of bad channels, n_jobs, parameter file
+- some renaming:
+    - `preprocessing_strategy` -> `denoising_strategy`
+    - `max_bad_channel_fraction_to_remove` - > `max_bad_channel_fraction`
+- better error handling
+
 ### v2.3 - Jan 31, 2024
 
 - better handling of spike sorting failures
