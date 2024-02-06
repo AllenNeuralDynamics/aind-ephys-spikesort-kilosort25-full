@@ -510,7 +510,9 @@ if __name__ == "__main__":
             except Exception as e:
                 # save log to results
                 sorting_output_folder.mkdir(parents=True, exist_ok=True)
-                shutil.copy(spikesorted_raw_output_folder / "spikeinterface_log.json", sorting_output_folder)
+                shutil.copy(
+                    spikesorted_raw_output_folder / recording_name / "spikeinterface_log.json", sorting_output_folder
+                )
                 print(f"Spike sorting for {recording_name} failed")
                 continue
 
