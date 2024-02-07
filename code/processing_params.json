@@ -203,8 +203,7 @@
             "d_prime",
             "nearest_neighbor",
             "silhouette"
-        ],
-        "n_jobs": 1
+        ]
     },
     "curation": {
         "isi_violations_ratio_threshold": 0.5,
