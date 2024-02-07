@@ -45,6 +45,12 @@ In addition, the scripts accept the following configuration parameters:
 - `--params-file`: path to a JSON file to specify parameters
 - `--params-str`: JSON-formatted string with custom parameters
 
+The NWB script also accepts the following parameter:
+- `--electrical-series-path`: path to the electrical series to process, e.g. `acquisision/ElectricalSeriesAP`
+
+This parameter is required if multiple electrical series are avaialable in the NWB file (otherwise an error is thrown
+with the available options).
+
 > **_NOTES ON PARAMETERS:_** In case `--params-file`/`--params-str` are not specified, default parameters are used 
 (see `code/processing_params.json` file).
 

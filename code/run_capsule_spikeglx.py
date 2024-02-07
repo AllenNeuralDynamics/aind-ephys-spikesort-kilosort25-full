@@ -565,6 +565,7 @@ if __name__ == "__main__":
             curation_notes += (
                 f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_curated.unit_ids)} passing default QC.\n"
             )
+            print(f"\t{np.sum(qc_quality)}/{len(sorting_curated.unit_ids)} units passing default QC")
 
         t_curation_end = time.perf_counter()
         elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
