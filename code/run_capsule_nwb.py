@@ -86,6 +86,15 @@ debug_duration_help = (
 debug_duration_group.add_argument("--debug-duration", help=debug_duration_help)
 debug_duration_group.add_argument("static_debug_duration", nargs="?", default=30, help=debug_duration_help)
 
+parser.add_argument(
+    "--electrical-series-path",
+    default=None,
+    help=(
+        "If multiple electrical series are present, specify the path to the desired one. "
+        "If not specified and multiple electrical series are present, an error will be raised."
+    )
+)
+
 parser.add_argument("--data-folder", default="../data", help="Custom data folder (default ../data)")
 parser.add_argument("--results-folder", default="../results", help="Custom results folder (default ../results)")
 parser.add_argument("--scratch-folder", default="../scratch", help="Custom scratch folder (default ../scratch)")
@@ -111,6 +120,7 @@ if __name__ == "__main__":
     REMOVE_BAD_CHANNELS = False if args.no_remove_bad_channels else args.static_remove_bad_channels == "true"
     MAX_BAD_CHANNEL_FRACTION = float(args.max_bad_channel_fraction or args.static_max_bad_channel_fraction)
     DEBUG_DURATION = float(args.debug_duration or args.static_debug_duration)
+    ELECTRICAL_SERIES_PATH = args.electrical_series_path
     DATA_FOLDER = Path(args.data_folder)
     RESULTS_FOLDER = Path(args.results_folder)
     SCRATCH_FOLDER = Path(args.scratch_folder)
@@ -124,6 +134,7 @@ if __name__ == "__main__":
     print(f"\tREMOVE_OUT_CHANNELS: {REMOVE_OUT_CHANNELS}")
     print(f"\tREMOVE_BAD_CHANNELS: {REMOVE_BAD_CHANNELS}")
     print(f"\tMAX BAD CHANNEL FRACTION: {MAX_BAD_CHANNEL_FRACTION}")
+    print(f"\tELECTRICAL_SERIES_PATH: {ELECTRICAL_SERIES_PATH}")
     print(f"\tDATA_FOLDER: {DATA_FOLDER}")
     print(f"\tRESULTS_FOLDER: {RESULTS_FOLDER}")
     print(f"\tSCRATCH_FOLDER: {SCRATCH_FOLDER}")
@@ -211,7 +222,9 @@ if __name__ == "__main__":
 
         recording_name_stem = ecephys_nwb_file.stem
         session_name = recording_name_stem
-        recording = se.read_nwb_recording(ecephys_nwb_file)
+        recording = se.read_nwb_recording(ecephys_nwb_file, electrical_series_path=ELECTRICAL_SERIES_PATH)
+        # needed to set a probe
+        recording.set_dummy_probe_from_locations(recording.get_channel_locations())
 
         if DEBUG:
             recording_list = []
@@ -550,6 +563,7 @@ if __name__ == "__main__":
             curation_notes += (
                 f"{recording_name}:\n- {np.sum(qc_quality)}/{len(sorting_curated.unit_ids)} passing default QC.\n"
             )
+            print(f"\t{np.sum(qc_quality)}/{len(sorting_curated.unit_ids)} units passing default QC")
 
         t_curation_end = time.perf_counter()
         elapsed_time_curation = np.round(t_curation_end - t_curation_start, 2)
