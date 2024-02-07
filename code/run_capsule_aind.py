@@ -225,7 +225,9 @@ if __name__ == "__main__":
         kachery_zone = os.getenv("KACHERY_ZONE", None)
         print(f"Kachery Zone: {kachery_zone}")
 
-        ecephys_sessions = [p for p in data_folder.iterdir() if "ecephys" in p.name.lower()]
+        ecephys_sessions = [
+            p for p in data_folder.iterdir() if "ecephys" in p.name.lower() or "behavior" in p.name.lower()
+        ]
         assert len(ecephys_sessions) == 1, f"Attach one session at a time {ecephys_sessions}"
         session = ecephys_sessions[0]
         session_name = session.name
